@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PromptCraft</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- Step 1: Input -->
+    <div id="step-input" class="step active">
+      <div class="container">
+        <div class="header">
+          <span class="logo">✦ PromptCraft</span>
+          <p class="tagline">Turn rough ideas into powerful AI prompts</p>
+        </div>
+        <div class="card">
+          <label for="user-input">What do you want AI to help you with?</label>
+          <textarea
+            id="user-input"
+            placeholder="e.g. write me an email, fix my code, explain a concept..."
+            rows="4"
+          ></textarea>
+          <button id="btn-next" onclick="handleInput()">
+            Generate Questions →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Questions -->
+    <div id="step-questions" class="step">
+      <div class="container">
+        <div class="header">
+          <span class="logo">✦ PromptCraft</span>
+          <p class="tagline">A few quick questions to sharpen your prompt</p>
+        </div>
+        <div class="card">
+          <div id="questions-list"></div>
+          <button id="btn-generate" onclick="handleGenerate()">
+            Build My Prompt →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: Result -->
+    <div id="step-result" class="step">
+      <div class="container">
+        <div class="header">
+          <span class="logo">✦ PromptCraft</span>
+          <p class="tagline">Your prompt is ready</p>
+        </div>
+        <div class="card">
+          <label>Your optimized prompt</label>
+          <div id="prompt-output"></div>
+          <div class="result-actions">
+            <button id="btn-copy" onclick="copyPrompt()">Copy Prompt</button>
+            <button class="btn-secondary" onclick="startOver()">
+              Start Over
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loader -->
+    <div id="loader" class="loader hidden">
+      <div class="spinner"></div>
+      <p id="loader-text">Thinking...</p>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

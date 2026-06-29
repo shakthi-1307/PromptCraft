@@ -1,0 +1,7 @@
+# Environment variables
+.env
+
+# Other common ignores
+node_modules/
+__pycache__/
+*.pyc
