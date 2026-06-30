@@ -29,19 +29,27 @@ async function handleInput() {
   showLoader("Generating questions...");
 
   try {
-    const res = await fetch("/generate-questions", {
+    const res = await fetch("http://localhost:8000/generate-prompt", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({ user_input: input }),
     });
 
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Error");
+
+    console.log(data);
+
+    if (!res.ok) {
+      throw new Error(data.error || "Gemini API error");
+    }
 
     state.questions = data.questions;
     renderQuestions(data.questions);
     hideLoader();
     showStep("step-questions");
+
   } catch (err) {
     hideLoader();
     alert("Something went wrong. Please try again.");
@@ -82,7 +90,7 @@ async function handleGenerate() {
   showLoader("Building your prompt...");
 
   try {
-    const res = await fetch("/generate-prompt", {
+    const res = await fetch("http://localhost:8000/generate-prompt", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
