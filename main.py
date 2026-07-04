@@ -19,7 +19,7 @@ app.add_middleware(
 )
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "llama3.1:latest"
+OLLAMA_MODEL = "llama3.2:1b"
 
 
 class UserInput(BaseModel):
@@ -49,7 +49,9 @@ async def call_ollama(prompt: str) -> str:
 
     if response.status_code != 200:
         raise HTTPException(status_code=500, detail="Ollama returned an error")
-
+    
+    print(response.status_code)
+    print(response.text)
     data = response.json()
     return data["response"]
 
@@ -68,6 +70,9 @@ Example format:
 ["Question 1?", "Question 2?", "Question 3?", "Question 4?"]"""
 
     raw = await call_ollama(prompt)
+    print("=" * 50)
+    print(raw)
+    print("=" * 50)
     questions = extract_json_array(raw)
 
     if not questions:

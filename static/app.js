@@ -29,7 +29,7 @@ async function handleInput() {
   showLoader("Generating questions...");
 
   try {
-    const res = await fetch("http://localhost:8000/generate-prompt", {
+    const res = await fetch("http://localhost:8000/generate-questions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
