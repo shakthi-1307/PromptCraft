@@ -14,9 +14,7 @@
           <span class="logo">✦ PromptCraft</span>
           <p class="tagline">Turn rough ideas into powerful AI prompts</p>
         </div>
-
         <div class="card">
-          <!-- Tabs -->
           <div class="auth-tabs">
             <button
               class="tab active"
@@ -29,8 +27,6 @@
               Sign up
             </button>
           </div>
-
-          <!-- Login Form -->
           <div id="form-login">
             <div class="field">
               <label>Email</label>
@@ -51,8 +47,6 @@
             <p class="auth-error hidden" id="login-error"></p>
             <button onclick="handleLogin()">Log in →</button>
           </div>
-
-          <!-- Signup Form -->
           <div id="form-signup" class="hidden">
             <div class="field">
               <label>Name</label>
@@ -83,14 +77,31 @@
 
     <!-- APP SCREEN -->
     <div id="screen-app" class="screen">
-      <!-- Top bar -->
+      <!-- Topbar -->
       <div class="topbar">
         <span class="logo">✦ PromptCraft</span>
         <div class="topbar-right">
           <span id="user-name" class="user-name"></span>
+          <button class="btn-ghost" onclick="toggleHistory()">History</button>
           <button class="btn-ghost" onclick="handleLogout()">Log out</button>
         </div>
       </div>
+
+      <!-- History Panel -->
+      <div id="history-panel" class="history-panel hidden">
+        <div class="history-header">
+          <span class="history-title">Prompt History</span>
+          <span class="history-close" onclick="toggleHistory()">✕</span>
+        </div>
+        <div id="history-list" class="history-list">
+          <p class="history-empty">Loading...</p>
+        </div>
+      </div>
+      <div
+        id="history-overlay"
+        class="history-overlay hidden"
+        onclick="toggleHistory()"
+      ></div>
 
       <!-- Step 1: Input -->
       <div id="step-input" class="step active">
@@ -104,7 +115,6 @@
               placeholder="e.g. write me an email, fix my code, summarize this document..."
               rows="4"
             ></textarea>
-
             <div class="upload-section">
               <label
                 >Attach files
@@ -129,7 +139,6 @@
               </div>
               <div id="file-list" class="file-list"></div>
             </div>
-
             <button onclick="handleInput()">Generate Questions →</button>
           </div>
         </div>
@@ -157,12 +166,10 @@
           <div class="card">
             <label>Your optimized prompt</label>
             <div id="prompt-output"></div>
-
             <div id="result-files" class="result-files hidden">
               <label>Attach these files when using this prompt</label>
               <div id="result-file-list" class="file-list"></div>
             </div>
-
             <div class="result-actions">
               <button onclick="copyPrompt()">Copy Prompt</button>
               <button class="btn-secondary" onclick="startOver()">

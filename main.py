@@ -7,7 +7,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from database import init_db, get_db, User
+from database import init_db, get_db, User, Prompt
 from auth import hash_password, verify_password, create_token, decode_token
 from email_service import send_welcome_email
 
@@ -202,6 +202,53 @@ Return ONLY the final prompt text. No explanation, no preamble, no markdown."""
 
     final_prompt = await call_ollama(prompt)
     return {"prompt": final_prompt.strip()}
+
+
+# --- History Models ---
+
+class SavePromptRequest(BaseModel):
+    user_input: str
+    generated: str
+
+
+# --- History Endpoints ---
+
+@app.post("/history/save")
+async def save_prompt(body: SavePromptRequest, email: str = Depends(decode_token), db: AsyncSession = Depends(get_db)):
+    entry = Prompt(user_email=email, user_input=body.user_input, generated=body.generated)
+    db.add(entry)
+    await db.commit()
+    return {"saved": True}
+
+
+@app.get("/history")
+async def get_history(email: str = Depends(decode_token), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Prompt)
+        .where(Prompt.user_email == email)
+        .order_by(Prompt.created_at.desc())
+    )
+    prompts = result.scalars().all()
+    return {"history": [
+        {
+            "id": p.id,
+            "user_input": p.user_input,
+            "generated": p.generated,
+            "created_at": p.created_at.isoformat(),
+        }
+        for p in prompts
+    ]}
+
+
+@app.delete("/history/{prompt_id}")
+async def delete_prompt(prompt_id: str, email: str = Depends(decode_token), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Prompt).where(Prompt.id == prompt_id, Prompt.user_email == email))
+    entry  = result.scalar_one_or_none()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+    await db.delete(entry)
+    await db.commit()
+    return {"deleted": True}
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

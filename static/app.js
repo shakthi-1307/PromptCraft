@@ -249,6 +249,7 @@ async function handleGenerate() {
     renderResultFiles();
     hideLoader();
     showStep("step-result");
+    saveToHistory(state.userInput, data.prompt);
   } catch (err) {
     hideLoader();
     alert("Something went wrong. Please try again.");
@@ -300,4 +301,106 @@ if (getToken()) {
   enterApp(getName());
 } else {
   showScreen("screen-auth");
+}
+
+
+// --- History ---
+
+async function toggleHistory() {
+  const panel   = document.getElementById("history-panel");
+  const overlay = document.getElementById("history-overlay");
+  const isOpen  = !panel.classList.contains("hidden");
+
+  if (isOpen) {
+    panel.classList.add("hidden");
+    overlay.classList.add("hidden");
+  } else {
+    panel.classList.remove("hidden");
+    overlay.classList.remove("hidden");
+    await loadHistory();
+  }
+}
+
+async function loadHistory() {
+  const list = document.getElementById("history-list");
+  list.innerHTML = `<p class="history-empty">Loading...</p>`;
+
+  try {
+    const res  = await fetch("/history", { headers: authHeaders() });
+    const data = await res.json();
+
+    if (!data.history.length) {
+      list.innerHTML = `<p class="history-empty">No prompts yet. Generate one to see it here.</p>`;
+      return;
+    }
+
+    list.innerHTML = "";
+    data.history.forEach((item) => {
+      const date = new Date(item.created_at).toLocaleDateString("en-US", {
+        month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
+      });
+
+      const el = document.createElement("div");
+      el.className = "history-item";
+      el.innerHTML = `
+        <div class="history-item-header" onclick="toggleHistoryItem(this)">
+          <div class="history-item-meta">
+            <span class="history-item-input">${escapeHtml(item.user_input)}</span>
+            <span class="history-item-date">${date}</span>
+          </div>
+          <div class="history-item-actions">
+            <button class="history-btn" onclick="copyHistoryItem(event, '${item.id}', this)">Copy</button>
+            <button class="history-btn danger" onclick="deleteHistoryItem(event, '${item.id}', this)">Delete</button>
+          </div>
+        </div>
+        <div class="history-item-body">${escapeHtml(item.generated)}</div>
+      `;
+
+      // Store generated text on the element for copying
+      el.dataset.generated = item.generated;
+      list.appendChild(el);
+    });
+  } catch (err) {
+    list.innerHTML = `<p class="history-empty">Failed to load history.</p>`;
+  }
+}
+
+function toggleHistoryItem(header) {
+  const body = header.nextElementSibling;
+  body.classList.toggle("open");
+}
+
+function copyHistoryItem(e, id, btn) {
+  e.stopPropagation();
+  const generated = btn.closest(".history-item").dataset.generated;
+  navigator.clipboard.writeText(generated).then(() => showToast("Copied to clipboard"));
+}
+
+async function deleteHistoryItem(e, id, btn) {
+  e.stopPropagation();
+  const res = await fetch(`/history/${id}`, { method: "DELETE", headers: authHeaders() });
+  if (res.ok) {
+    btn.closest(".history-item").remove();
+    const list = document.getElementById("history-list");
+    if (!list.children.length) {
+      list.innerHTML = `<p class="history-empty">No prompts yet. Generate one to see it here.</p>`;
+    }
+    showToast("Prompt deleted");
+  }
+}
+
+async function saveToHistory(userInput, generated) {
+  try {
+    await fetch("/history/save", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ user_input: userInput, generated }),
+    });
+  } catch (err) {
+    console.error("Failed to save to history:", err);
+  }
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
