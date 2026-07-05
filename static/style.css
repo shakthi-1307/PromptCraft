@@ -1,8 +1,4 @@
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
   --bg: #f9f9f8;
@@ -12,6 +8,7 @@
   --muted: #8a8a82;
   --accent: #2563eb;
   --accent-hover: #1d4ed8;
+  --danger: #dc2626;
   --radius: 10px;
 }
 
@@ -20,32 +17,114 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  display: flex;
+}
+
+/* Screens */
+.screen { display: none; min-height: 100vh; }
+.screen.active { display: block; }
+
+/* Auth screen centers content */
+#screen-auth {
+  display: none;
   align-items: center;
   justify-content: center;
   padding: 24px;
 }
+#screen-auth.active { display: flex; }
 
-.step { display: none; width: 100%; }
+/* App screen layout */
+#screen-app { display: none; flex-direction: column; }
+#screen-app.active { display: flex; }
+
+/* Topbar */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.user-name {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+.btn-ghost:hover { background: var(--bg); color: var(--text); }
+
+/* Steps inside app */
+.step { display: none; flex: 1; padding: 40px 24px; }
 .step.active { display: block; }
 
 .container { max-width: 560px; margin: 0 auto; }
 
-.header { margin-bottom: 28px; }
+.header { margin-bottom: 24px; }
 
-.logo {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+.logo { font-size: 15px; font-weight: 600; letter-spacing: 0.01em; }
+
+.tagline { margin-top: 6px; font-size: 22px; font-weight: 600; line-height: 1.3; }
+
+/* Auth specific */
+.auth-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+  gap: 0;
 }
 
-.tagline {
-  margin-top: 6px;
-  font-size: 22px;
-  font-weight: 600;
-  line-height: 1.3;
+.tab {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: -1px;
+  cursor: pointer;
 }
 
+.tab:hover { background: transparent; color: var(--text); }
+
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: transparent;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.auth-error {
+  font-size: 13px;
+  color: var(--danger);
+  margin-bottom: 8px;
+}
+
+/* Card */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -53,7 +132,7 @@ body {
   padding: 28px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
 }
 
 label {
@@ -65,6 +144,24 @@ label {
 }
 
 .muted { color: var(--muted); text-transform: none; font-weight: 400; letter-spacing: 0; }
+
+input[type="email"],
+input[type="password"],
+input[type="text"] {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--bg);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+input:focus { border-color: var(--accent); }
+input::placeholder { color: var(--muted); }
 
 textarea {
   width: 100%;
@@ -83,64 +180,6 @@ textarea {
 
 textarea:focus { border-color: var(--accent); }
 textarea::placeholder { color: var(--muted); }
-
-/* Upload */
-.upload-section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.drop-zone {
-  border: 1.5px dashed var(--border);
-  border-radius: 8px;
-  padding: 18px;
-  text-align: center;
-  font-size: 14px;
-  color: var(--muted);
-  cursor: default;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.drop-zone.dragover {
-  border-color: var(--accent);
-  background: #eff6ff;
-}
-
-.link {
-  color: var(--accent);
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.file-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.file-tag {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 10px;
-  font-size: 13px;
-  color: var(--text);
-}
-
-.file-tag .remove {
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1;
-}
-
-.file-tag .remove:hover { color: var(--text); }
-
-.file-icon { font-size: 13px; }
 
 /* Buttons */
 button {
@@ -168,6 +207,39 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-secondary:hover { background: var(--bg); color: var(--text); }
 
 .result-actions { display: flex; gap: 10px; }
+
+/* Upload */
+.upload-section { display: flex; flex-direction: column; gap: 10px; }
+
+.drop-zone {
+  border: 1.5px dashed var(--border);
+  border-radius: 8px;
+  padding: 18px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--muted);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.drop-zone.dragover { border-color: var(--accent); background: #eff6ff; }
+
+.link { color: var(--accent); cursor: pointer; text-decoration: underline; }
+
+.file-list { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.file-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+.file-tag .remove { cursor: pointer; color: var(--muted); font-size: 15px; line-height: 1; }
+.file-tag .remove:hover { color: var(--text); }
 
 /* Questions */
 .question-block { display: flex; flex-direction: column; gap: 6px; }
@@ -215,7 +287,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
-
 #loader-text { font-size: 14px; color: var(--muted); }
 
 /* Toast */
@@ -232,6 +303,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   opacity: 0;
   transition: opacity 0.2s;
   pointer-events: none;
+  white-space: nowrap;
 }
 
 .toast.show { opacity: 1; }

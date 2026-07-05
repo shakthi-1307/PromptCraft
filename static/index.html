@@ -7,91 +7,173 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <!-- Step 1: Input -->
-    <div id="step-input" class="step active">
+    <!-- AUTH SCREEN -->
+    <div id="screen-auth" class="screen active">
       <div class="container">
         <div class="header">
           <span class="logo">✦ PromptCraft</span>
           <p class="tagline">Turn rough ideas into powerful AI prompts</p>
         </div>
-        <div class="card">
-          <label for="user-input">What do you want AI to help you with?</label>
-          <textarea
-            id="user-input"
-            placeholder="e.g. write me an email, fix my code, summarize this document..."
-            rows="4"
-          ></textarea>
 
-          <!-- File Upload -->
-          <div class="upload-section">
-            <label
-              >Attach files
-              <span class="muted">(optional — .pdf or .txt)</span></label
+        <div class="card">
+          <!-- Tabs -->
+          <div class="auth-tabs">
+            <button
+              class="tab active"
+              id="tab-login"
+              onclick="switchTab('login')"
             >
-            <div id="drop-zone" class="drop-zone">
-              <span
-                >Drop files here or
-                <span
-                  class="link"
-                  onclick="document.getElementById('file-input').click()"
-                  >browse</span
-                ></span
-              >
-              <input
-                type="file"
-                id="file-input"
-                accept=".pdf,.txt"
-                multiple
-                hidden
-              />
-            </div>
-            <div id="file-list" class="file-list"></div>
-          </div>
-
-          <button onclick="handleInput()">Generate Questions →</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Step 2: Questions -->
-    <div id="step-questions" class="step">
-      <div class="container">
-        <div class="header">
-          <span class="logo">✦ PromptCraft</span>
-          <p class="tagline">A few quick questions to sharpen your prompt</p>
-        </div>
-        <div class="card">
-          <div id="questions-list"></div>
-          <button onclick="handleGenerate()">Build My Prompt →</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Step 3: Result -->
-    <div id="step-result" class="step">
-      <div class="container">
-        <div class="header">
-          <span class="logo">✦ PromptCraft</span>
-          <p class="tagline">Your prompt is ready</p>
-        </div>
-        <div class="card">
-          <label>Your optimized prompt</label>
-          <div id="prompt-output"></div>
-
-          <div id="result-files" class="result-files hidden">
-            <label>Attach these files when using this prompt</label>
-            <div id="result-file-list" class="file-list"></div>
-          </div>
-
-          <div class="result-actions">
-            <button onclick="copyPrompt()">Copy Prompt</button>
-            <button class="btn-secondary" onclick="startOver()">
-              Start Over
+              Log in
+            </button>
+            <button class="tab" id="tab-signup" onclick="switchTab('signup')">
+              Sign up
             </button>
           </div>
+
+          <!-- Login Form -->
+          <div id="form-login">
+            <div class="field">
+              <label>Email</label>
+              <input
+                type="email"
+                id="login-email"
+                placeholder="you@example.com"
+              />
+            </div>
+            <div class="field">
+              <label>Password</label>
+              <input
+                type="password"
+                id="login-password"
+                placeholder="••••••••"
+              />
+            </div>
+            <p class="auth-error hidden" id="login-error"></p>
+            <button onclick="handleLogin()">Log in →</button>
+          </div>
+
+          <!-- Signup Form -->
+          <div id="form-signup" class="hidden">
+            <div class="field">
+              <label>Name</label>
+              <input type="text" id="signup-name" placeholder="Your name" />
+            </div>
+            <div class="field">
+              <label>Email</label>
+              <input
+                type="email"
+                id="signup-email"
+                placeholder="you@example.com"
+              />
+            </div>
+            <div class="field">
+              <label>Password</label>
+              <input
+                type="password"
+                id="signup-password"
+                placeholder="Min 6 characters"
+              />
+            </div>
+            <p class="auth-error hidden" id="signup-error"></p>
+            <button onclick="handleSignup()">Create account →</button>
+          </div>
         </div>
       </div>
     </div>
+
+    <!-- APP SCREEN -->
+    <div id="screen-app" class="screen">
+      <!-- Top bar -->
+      <div class="topbar">
+        <span class="logo">✦ PromptCraft</span>
+        <div class="topbar-right">
+          <span id="user-name" class="user-name"></span>
+          <button class="btn-ghost" onclick="handleLogout()">Log out</button>
+        </div>
+      </div>
+
+      <!-- Step 1: Input -->
+      <div id="step-input" class="step active">
+        <div class="container">
+          <div class="header">
+            <p class="tagline">What do you want AI to help you with?</p>
+          </div>
+          <div class="card">
+            <textarea
+              id="user-input"
+              placeholder="e.g. write me an email, fix my code, summarize this document..."
+              rows="4"
+            ></textarea>
+
+            <div class="upload-section">
+              <label
+                >Attach files
+                <span class="muted">(optional — .pdf or .txt)</span></label
+              >
+              <div id="drop-zone" class="drop-zone">
+                <span
+                  >Drop files here or
+                  <span
+                    class="link"
+                    onclick="document.getElementById('file-input').click()"
+                    >browse</span
+                  ></span
+                >
+                <input
+                  type="file"
+                  id="file-input"
+                  accept=".pdf,.txt"
+                  multiple
+                  hidden
+                />
+              </div>
+              <div id="file-list" class="file-list"></div>
+            </div>
+
+            <button onclick="handleInput()">Generate Questions →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: Questions -->
+      <div id="step-questions" class="step">
+        <div class="container">
+          <div class="header">
+            <p class="tagline">A few quick questions to sharpen your prompt</p>
+          </div>
+          <div class="card">
+            <div id="questions-list"></div>
+            <button onclick="handleGenerate()">Build My Prompt →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Result -->
+      <div id="step-result" class="step">
+        <div class="container">
+          <div class="header">
+            <p class="tagline">Your prompt is ready</p>
+          </div>
+          <div class="card">
+            <label>Your optimized prompt</label>
+            <div id="prompt-output"></div>
+
+            <div id="result-files" class="result-files hidden">
+              <label>Attach these files when using this prompt</label>
+              <div id="result-file-list" class="file-list"></div>
+            </div>
+
+            <div class="result-actions">
+              <button onclick="copyPrompt()">Copy Prompt</button>
+              <button class="btn-secondary" onclick="startOver()">
+                Start Over
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- end screen-app -->
 
     <!-- Loader -->
     <div id="loader" class="loader hidden">
