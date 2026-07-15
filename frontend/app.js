@@ -209,6 +209,7 @@ async function handleInput() {
       body: JSON.stringify({ user_input: input, filenames: state.uploadedFiles.map((f) => f.filename) }),
     });
     const data = await res.json();
+    if (res.status === 429) { hideLoader(); showToast(data.detail); return; }
     if (!res.ok) throw new Error(data.detail || "Error");
     state.questions = data.questions;
     renderQuestions(data.questions);
@@ -244,6 +245,7 @@ async function handleGenerate() {
       body: JSON.stringify({ user_input: state.userInput, questions: state.questions, answers, filenames: state.uploadedFiles.map((f) => f.filename) }),
     });
     const data = await res.json();
+    if (res.status === 429) { hideLoader(); showToast(data.detail); return; }
     if (!res.ok) throw new Error(data.detail || "Error");
     document.getElementById("prompt-output").textContent = data.prompt;
     renderResultFiles();
@@ -403,4 +405,75 @@ async function saveToHistory(userInput, generated) {
 
 function escapeHtml(str) {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+
+// --- Voice Input ---
+
+let recognition = null;
+let isListening  = false;
+
+function initSpeechRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    showToast("Voice input not supported in this browser. Use Chrome or Edge.");
+    return null;
+  }
+
+  const r = new SpeechRecognition();
+  r.continuous      = false;
+  r.interimResults  = true;
+  r.lang            = "en-US";
+
+  r.onresult = (e) => {
+    const transcript = Array.from(e.results)
+      .map((result) => result[0].transcript)
+      .join("");
+
+    document.getElementById("user-input").value = transcript;
+  };
+
+  r.onerror = (e) => {
+    if (e.error === "not-allowed") {
+      showToast("Microphone access denied. Please allow mic permission.");
+    } else {
+      showToast("Voice input error. Please try again.");
+    }
+    stopListening();
+  };
+
+  r.onend = () => stopListening();
+
+  return r;
+}
+
+function toggleVoice() {
+  if (isListening) {
+    recognition?.stop();
+    stopListening();
+  } else {
+    if (!recognition) recognition = initSpeechRecognition();
+    if (!recognition) return;
+    try {
+      recognition.start();
+      startListening();
+    } catch (e) {
+      showToast("Could not start voice input. Try again.");
+    }
+  }
+}
+
+function startListening() {
+  isListening = true;
+  const btn = document.getElementById("mic-btn");
+  btn.classList.add("listening");
+  btn.title = "Stop listening";
+}
+
+function stopListening() {
+  isListening = false;
+  const btn = document.getElementById("mic-btn");
+  btn.classList.remove("listening");
+  btn.title = "Voice input";
 }

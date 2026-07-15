@@ -22,15 +22,16 @@ User copies and uses it
 
 ## Tech Stack
 
-| Layer        | Tech                            |
-| ------------ | ------------------------------- |
-| Frontend     | HTML, CSS, Vanilla JavaScript   |
-| Backend      | FastAPI (Python)                |
-| Database     | PostgreSQL + SQLAlchemy (async) |
-| AI / LLM     | Ollama (local) — LLaMA 3.1      |
-| Auth         | JWT + bcrypt                    |
-| Email        | Gmail SMTP                      |
-| File Parsing | PyMuPDF                         |
+| Layer         | Tech                            |
+| ------------- | ------------------------------- |
+| Frontend      | HTML, CSS, Vanilla JavaScript   |
+| Backend       | FastAPI (Python)                |
+| Database      | PostgreSQL + SQLAlchemy (async) |
+| AI / LLM      | Ollama (local) — LLaMA 3.1      |
+| Auth          | JWT + bcrypt                    |
+| Email         | Gmail SMTP                      |
+| File Parsing  | PyMuPDF                         |
+| Rate Limiting | slowapi                         |
 
 ## Features
 
@@ -38,37 +39,54 @@ User copies and uses it
 - **File upload support** — attach `.pdf` or `.txt` files; content is extracted and used as context
 - **Voice input** — speak your idea using the browser's native Web Speech API
 - **Authentication** — signup, login, JWT-protected routes, welcome email on signup
-- **Prompt history** — every generated prompt is saved to PostgreSQL per user, with expand, copy, and delete
-- **Rate limiting** — 10 requests per minute per user via slowapi
+- **Prompt history** — every generated prompt saved to PostgreSQL per user, with expand, copy, and delete
+- **Rate limiting** — 10 requests per minute per user
 - **Fully local AI** — no external AI API, no cost, no data leaving your machine
 
 ## Project Structure
 
 ```
-promptcraft/
-├── main.py            # FastAPI app — all routes
-├── auth.py            # JWT creation and verification
-├── database.py        # PostgreSQL models and session
-├── email_service.py   # Gmail welcome email
-├── .env               # Credentials (not committed)
-├── requirements.txt
-└── static/
-    ├── index.html
-    ├── style.css
-    └── app.js
+PromptCraft/
+├── backend/
+│   ├── app/
+│   │   ├── main.py          # FastAPI app — all routes
+│   │   ├── config.py        # Environment variables
+│   │   ├── database.py      # DB engine and session
+│   │   ├── models.py        # SQLAlchemy models
+│   │   ├── schemas.py       # Pydantic request/response models
+│   │   ├── auth.py          # JWT logic
+│   │   ├── limiter.py       # Rate limiting
+│   │   └── services/
+│   │       ├── ollama.py    # LLM calls
+│   │       ├── file.py      # PDF/TXT extraction
+│   │       └── email.py     # Gmail SMTP
+│   ├── .env.example
+│   └── requirements.txt
+├── frontend/
+│   ├── index.html
+│   ├── style.css
+│   └── app.js
+├── .gitignore
+└── README.md
 ```
 
 ## Running Locally
 
 ```bash
-# Install dependencies
+# 1. Clone the repo
+git clone https://github.com/shakthi-1307/PromptCraft.git
+cd PromptCraft
+
+# 2. Set up backend
+cd backend
+cp .env.example .env        # fill in your values
 pip install -r requirements.txt
 
-# Start Ollama
+# 3. Start Ollama
 ollama serve
 
-# Run the server
-uvicorn main:app --reload
+# 4. Run the server
+uvicorn app.main:app --reload
 ```
 
 Open `http://localhost:8000`

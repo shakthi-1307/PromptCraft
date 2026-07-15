@@ -1,7 +1,29 @@
-# Environment variables
+# Environment
 .env
+.env.example
 
-# Other common ignores
-node_modules/
+*.env
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

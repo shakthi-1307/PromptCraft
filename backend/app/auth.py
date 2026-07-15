@@ -3,17 +3,13 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
-SECRET_KEY  = os.getenv("JWT_SECRET", "changeme")
-ALGORITHM   = "HS256"
-TOKEN_EXPIRE_HOURS = 24
+from app.config import settings
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 bearer      = HTTPBearer()
+
+SECRET_KEY  = settings.JWT_SECRET
+ALGORITHM   = settings.JWT_ALGORITHM
 
 
 def hash_password(password: str) -> str:
@@ -25,7 +21,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_token(email: str) -> str:
-    expire  = datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS)
+    expire  = datetime.now(timezone.utc) + timedelta(hours=settings.JWT_EXPIRE_HOURS)
     payload = {"sub": email, "exp": expire}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 

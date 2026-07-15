@@ -1,17 +1,11 @@
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
-GMAIL_USER     = os.getenv("GMAIL_USER")
-GMAIL_APP_PASS = os.getenv("GMAIL_APP_PASS")
+from app.config import settings
 
 
 def send_welcome_email(to_email: str, name: str):
-    if not GMAIL_USER or not GMAIL_APP_PASS:
+    if not settings.GMAIL_USER or not settings.GMAIL_APP_PASS:
         print("Gmail credentials not set — skipping welcome email.")
         return
 
@@ -24,21 +18,21 @@ def send_welcome_email(to_email: str, name: str):
       </p>
       <hr style="border: none; border-top: 1px solid #e4e4e0; margin: 24px 0;" />
       <p style="font-size: 13px; color: #8a8a82;">
-        Just type what you want AI to do, answer a few smart questions, and get a prompt that actually works.
+        Type what you want AI to do, answer a few smart questions, and get a prompt that actually works.
       </p>
     </div>
     """
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"]    = GMAIL_USER
+    msg["From"]    = settings.GMAIL_USER
     msg["To"]      = to_email
     msg.attach(MIMEText(html, "html"))
 
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(GMAIL_USER, GMAIL_APP_PASS)
-            server.sendmail(GMAIL_USER, to_email, msg.as_string())
+            server.login(settings.GMAIL_USER, settings.GMAIL_APP_PASS)
+            server.sendmail(settings.GMAIL_USER, to_email, msg.as_string())
         print(f"Welcome email sent to {to_email}")
     except Exception as e:
         print(f"Failed to send email: {e}")
