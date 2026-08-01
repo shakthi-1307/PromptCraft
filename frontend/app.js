@@ -44,6 +44,16 @@ function showToast(message) {
   setTimeout(() => toast.classList.remove("show"), 2200);
 }
 
+// --- Validation ---
+
+function validateInput(value, { min = 0, max = Infinity, label = "Field" } = {}) {
+  const trimmed = value.trim();
+  if (!trimmed)             return `${label} cannot be empty.`;
+  if (trimmed.length < min) return `${label} must be at least ${min} characters.`;
+  if (trimmed.length > max) return `${label} must be under ${max} characters.`;
+  return null;
+}
+
 // --- Auth tab switch ---
 
 function switchTab(tab) {
@@ -96,8 +106,12 @@ async function handleSignup() {
   const email    = document.getElementById("signup-email").value.trim();
   const password = document.getElementById("signup-password").value;
 
-  if (!name || !email || !password) { showAuthError("signup", "Please fill in all fields."); return; }
-  if (password.length < 6) { showAuthError("signup", "Password must be at least 6 characters."); return; }
+  const nameErr = validateInput(name,     { min: 2, max: 50,  label: "Name" });
+  const passErr = validateInput(password, { min: 6, max: 72,  label: "Password" });
+
+  if (!email)  { showAuthError("signup", "Please enter your email."); return; }
+  if (nameErr) { showAuthError("signup", nameErr); return; }
+  if (passErr) { showAuthError("signup", passErr); return; }
 
   showLoader("Creating account...");
   try {
@@ -152,29 +166,33 @@ dropZone.addEventListener("drop", (e) => {
 fileInput.addEventListener("change", () => { handleFiles(Array.from(fileInput.files)); fileInput.value = ""; });
 
 async function handleFiles(files) {
+  const valid = [];
   for (const file of files) {
     const ext = file.name.split(".").pop().toLowerCase();
     if (!["pdf", "txt"].includes(ext)) { showToast(`${file.name}: only .pdf and .txt supported`); continue; }
     if (state.uploadedFiles.find((f) => f.filename === file.name)) { showToast(`${file.name} already uploaded`); continue; }
-    await uploadFile(file);
+    valid.push(file);
   }
+  if (!valid.length) return;
+
+  showLoader(valid.length > 1 ? `Uploading ${valid.length} files...` : `Uploading ${valid[0].name}...`);
+  // Upload all valid files in parallel
+  await Promise.all(valid.map((file) => uploadFileSilent(file)));
+  renderFileTags();
+  hideLoader();
+  showToast(valid.length > 1 ? `${valid.length} files uploaded` : `${valid[0].name} uploaded`);
 }
 
-async function uploadFile(file) {
+async function uploadFileSilent(file) {
   const formData = new FormData();
   formData.append("file", file);
-  showLoader(`Uploading ${file.name}...`);
   try {
     const res  = await fetch("/upload", { method: "POST", headers: { "Authorization": `Bearer ${getToken()}` }, body: formData });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "Upload failed");
     state.uploadedFiles.push({ filename: data.filename });
-    renderFileTags();
-    showToast(`${data.filename} uploaded`);
   } catch (err) {
     showToast(`Failed to upload ${file.name}`);
-  } finally {
-    hideLoader();
   }
 }
 
@@ -199,7 +217,10 @@ function renderFileTags() {
 
 async function handleInput() {
   const input = document.getElementById("user-input").value.trim();
-  if (!input) return;
+
+  const err = validateInput(input, { min: 10, max: 1000, label: "Your idea" });
+  if (err) { showToast(err); return; }
+
   state.userInput = input;
   showLoader("Generating questions...");
   try {
@@ -237,12 +258,18 @@ function renderQuestions(questions) {
 
 async function handleGenerate() {
   const answers = state.questions.map((_, i) => document.getElementById(`answer-${i}`)?.value.trim() || "");
+
+  const allEmpty = answers.every((a) => !a);
+  if (allEmpty) { showToast("Please answer at least one question for a better prompt."); return; }
+
+  const safeAnswers = answers.map((a) => a.slice(0, 500));
+
   showLoader("Building your prompt...");
   try {
     const res  = await fetch("/generate-prompt", {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ user_input: state.userInput, questions: state.questions, answers, filenames: state.uploadedFiles.map((f) => f.filename) }),
+      body: JSON.stringify({ user_input: state.userInput, questions: state.questions, answers: safeAnswers, filenames: state.uploadedFiles.map((f) => f.filename) }),
     });
     const data = await res.json();
     if (res.status === 429) { hideLoader(); showToast(data.detail); return; }
@@ -290,21 +317,10 @@ async function startOver() {
   document.getElementById("file-list").innerHTML = "";
   document.getElementById("result-file-list").innerHTML = "";
   document.getElementById("result-files").classList.add("hidden");
+  document.getElementById("char-counter").textContent = "0 / 1000";
+  document.getElementById("char-counter").className = "char-counter";
   showStep("step-input");
 }
-
-// --- Enter key shortcut ---
-document.getElementById("user-input").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleInput(); }
-});
-
-// --- Init: check if already logged in ---
-if (getToken()) {
-  enterApp(getName());
-} else {
-  showScreen("screen-auth");
-}
-
 
 // --- History ---
 
@@ -344,6 +360,7 @@ async function loadHistory() {
 
       const el = document.createElement("div");
       el.className = "history-item";
+      el.dataset.generated = item.generated;
       el.innerHTML = `
         <div class="history-item-header" onclick="toggleHistoryItem(this)">
           <div class="history-item-meta">
@@ -351,15 +368,12 @@ async function loadHistory() {
             <span class="history-item-date">${date}</span>
           </div>
           <div class="history-item-actions">
-            <button class="history-btn" onclick="copyHistoryItem(event, '${item.id}', this)">Copy</button>
+            <button class="history-btn" onclick="copyHistoryItem(event, this)">Copy</button>
             <button class="history-btn danger" onclick="deleteHistoryItem(event, '${item.id}', this)">Delete</button>
           </div>
         </div>
         <div class="history-item-body">${escapeHtml(item.generated)}</div>
       `;
-
-      // Store generated text on the element for copying
-      el.dataset.generated = item.generated;
       list.appendChild(el);
     });
   } catch (err) {
@@ -368,11 +382,10 @@ async function loadHistory() {
 }
 
 function toggleHistoryItem(header) {
-  const body = header.nextElementSibling;
-  body.classList.toggle("open");
+  header.nextElementSibling.classList.toggle("open");
 }
 
-function copyHistoryItem(e, id, btn) {
+function copyHistoryItem(e, btn) {
   e.stopPropagation();
   const generated = btn.closest(".history-item").dataset.generated;
   navigator.clipboard.writeText(generated).then(() => showToast("Copied to clipboard"));
@@ -407,7 +420,6 @@ function escapeHtml(str) {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-
 // --- Voice Input ---
 
 let recognition = null;
@@ -415,36 +427,32 @@ let isListening  = false;
 
 function initSpeechRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
   if (!SpeechRecognition) {
     showToast("Voice input not supported in this browser. Use Chrome or Edge.");
     return null;
   }
 
   const r = new SpeechRecognition();
-  r.continuous      = false;
-  r.interimResults  = true;
-  r.lang            = "en-US";
+  r.continuous     = false;
+  r.interimResults = true;
+  r.lang           = "en-US";
 
   r.onresult = (e) => {
-    const transcript = Array.from(e.results)
-      .map((result) => result[0].transcript)
-      .join("");
-
+    const transcript = Array.from(e.results).map((r) => r[0].transcript).join("");
     document.getElementById("user-input").value = transcript;
+    // Update char counter
+    const counter = document.getElementById("char-counter");
+    counter.textContent = `${transcript.length} / 1000`;
+    counter.className = "char-counter" + (transcript.length >= 1000 ? " limit" : transcript.length >= 800 ? " warn" : "");
   };
 
   r.onerror = (e) => {
-    if (e.error === "not-allowed") {
-      showToast("Microphone access denied. Please allow mic permission.");
-    } else {
-      showToast("Voice input error. Please try again.");
-    }
+    if (e.error === "not-allowed") showToast("Microphone access denied. Please allow mic permission.");
+    else showToast("Voice input error. Please try again.");
     stopListening();
   };
 
   r.onend = () => stopListening();
-
   return r;
 }
 
@@ -455,25 +463,39 @@ function toggleVoice() {
   } else {
     if (!recognition) recognition = initSpeechRecognition();
     if (!recognition) return;
-    try {
-      recognition.start();
-      startListening();
-    } catch (e) {
-      showToast("Could not start voice input. Try again.");
-    }
+    try { recognition.start(); startListening(); }
+    catch (e) { showToast("Could not start voice input. Try again."); }
   }
 }
 
 function startListening() {
   isListening = true;
-  const btn = document.getElementById("mic-btn");
-  btn.classList.add("listening");
-  btn.title = "Stop listening";
+  document.getElementById("mic-btn").classList.add("listening");
+  document.getElementById("mic-btn").title = "Stop listening";
 }
 
 function stopListening() {
   isListening = false;
-  const btn = document.getElementById("mic-btn");
-  btn.classList.remove("listening");
-  btn.title = "Voice input";
+  document.getElementById("mic-btn").classList.remove("listening");
+  document.getElementById("mic-btn").title = "Voice input";
+}
+
+// --- Enter key shortcut ---
+document.getElementById("user-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleInput(); }
+});
+
+// --- Character counter ---
+document.getElementById("user-input").addEventListener("input", () => {
+  const len     = document.getElementById("user-input").value.length;
+  const counter = document.getElementById("char-counter");
+  counter.textContent = `${len} / 1000`;
+  counter.className   = "char-counter" + (len >= 1000 ? " limit" : len >= 800 ? " warn" : "");
+});
+
+// --- Init ---
+if (getToken()) {
+  enterApp(getName());
+} else {
+  showScreen("screen-auth");
 }

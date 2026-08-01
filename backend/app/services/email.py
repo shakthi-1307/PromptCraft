@@ -2,11 +2,14 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from app.config import settings
+from app.logger import get_logger
+
+log = get_logger(__name__)
 
 
 def send_welcome_email(to_email: str, name: str):
     if not settings.GMAIL_USER or not settings.GMAIL_APP_PASS:
-        print("Gmail credentials not set — skipping welcome email.")
+        log.warning("Gmail credentials not set — skipping welcome email")
         return
 
     subject = "Welcome to PromptCraft ✦"
@@ -33,6 +36,8 @@ def send_welcome_email(to_email: str, name: str):
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(settings.GMAIL_USER, settings.GMAIL_APP_PASS)
             server.sendmail(settings.GMAIL_USER, to_email, msg.as_string())
-        print(f"Welcome email sent to {to_email}")
-    except Exception as e:
-        print(f"Failed to send email: {e}")
+        log.info(f"Welcome email sent to {to_email}")
+    except smtplib.SMTPAuthenticationError:
+        log.error("Gmail authentication failed — check GMAIL_USER and GMAIL_APP_PASS")
+    except smtplib.SMTPException as e:
+        log.error(f"Failed to send welcome email to {to_email}: {e}")

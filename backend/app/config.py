@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     # Ollama
     OLLAMA_URL: str = "http://localhost:11434/api/generate"
-    OLLAMA_MODEL: str = "llama3.1:latest"
+    OLLAMA_MODEL: str = "llama3.2:1b"
 
     # Gmail
     GMAIL_USER: str = ""

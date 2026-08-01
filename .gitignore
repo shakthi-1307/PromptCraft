@@ -1,7 +1,5 @@
 # Environment
 .env
-.env.example
-
 *.env
 
 # Python
@@ -27,3 +25,4 @@ Thumbs.db
 
 # Logs
 *.log
+logs/

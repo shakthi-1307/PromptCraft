@@ -26,11 +26,82 @@ body {
 /* Auth screen centers content */
 #screen-auth {
   display: none;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 24px;
+  padding: 48px 24px;
+  min-height: 100vh;
 }
 #screen-auth.active { display: flex; }
+
+/* Hero */
+.hero {
+  max-width: 560px;
+  width: 100%;
+  margin-bottom: 32px;
+  text-align: center;
+}
+
+.hero .logo {
+  display: block;
+  margin-bottom: 20px;
+}
+
+.hero-title {
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+
+.hero-sub {
+  font-size: 15px;
+  color: var(--muted);
+  line-height: 1.65;
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+/* How it works */
+.how-it-works {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 560px;
+  width: 100%;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.step-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 7px 14px;
+}
+
+.step-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.step-text { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; }
+
+.step-arrow { color: var(--muted); font-size: 14px; }
 
 /* App screen layout */
 #screen-app { display: none; flex-direction: column; }
@@ -74,7 +145,7 @@ body {
 .step { display: none; flex: 1; padding: 40px 24px; }
 .step.active { display: block; }
 
-.container { max-width: 560px; margin: 0 auto; }
+.container { max-width: 560px; margin: 0 auto; width: 100%; }
 
 .header { margin-bottom: 24px; }
 
@@ -251,6 +322,16 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 
 .upload-section { display: flex; flex-direction: column; gap: 10px; }
+
+.char-counter {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+  margin-top: -8px;
+}
+
+.char-counter.warn  { color: #f59e0b; }
+.char-counter.limit { color: var(--danger); }
 
 .drop-zone {
   border: 1.5px dashed var(--border);

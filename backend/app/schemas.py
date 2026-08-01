@@ -1,17 +1,25 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
+from typing import Annotated
+from pydantic import StringConstraints
+
+# Reusable constrained types
+Name       = Annotated[str, StringConstraints(min_length=2, max_length=50, strip_whitespace=True)]
+Password   = Annotated[str, StringConstraints(min_length=6, max_length=72)]
+UserInput  = Annotated[str, StringConstraints(min_length=10, max_length=1000, strip_whitespace=True)]
+ShortAnswer = Annotated[str, StringConstraints(max_length=500, strip_whitespace=True)]
 
 
 # --- Auth ---
 
 class SignupRequest(BaseModel):
-    name: str
+    name: Name
     email: EmailStr
-    password: str
+    password: Password
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: Password
 
 
 class AuthResponse(BaseModel):
@@ -22,20 +30,44 @@ class AuthResponse(BaseModel):
 # --- Prompts ---
 
 class GenerateQuestionsRequest(BaseModel):
-    user_input: str
+    user_input: UserInput
     filenames: list[str] = []
+
+    @field_validator("filenames")
+    @classmethod
+    def validate_filenames(cls, filenames):
+        for name in filenames:
+            if not (name.endswith(".pdf") or name.endswith(".txt")):
+                raise ValueError(f"Invalid file type: {name}. Only .pdf and .txt allowed.")
+            if len(name) > 255:
+                raise ValueError("Filename too long.")
+        return filenames
 
 
 class GeneratePromptRequest(BaseModel):
-    user_input: str
+    user_input: UserInput
     questions: list[str]
-    answers: list[str]
+    answers: list[ShortAnswer]
     filenames: list[str] = []
+
+    @field_validator("questions")
+    @classmethod
+    def validate_questions(cls, questions):
+        if not 1 <= len(questions) <= 7:
+            raise ValueError("Expected between 1 and 5 questions.")
+        return questions
+
+    @field_validator("answers")
+    @classmethod
+    def validate_answers(cls, answers):
+        if not 1 <= len(answers) <= 5:
+            raise ValueError("Expected between 1 and 5 answers.")
+        return answers
 
 
 class SavePromptRequest(BaseModel):
-    user_input: str
-    generated: str
+    user_input: UserInput
+    generated: Annotated[str, StringConstraints(min_length=1, max_length=10000)]
 
 
 # --- History ---

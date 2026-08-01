@@ -10,10 +10,35 @@
     <!-- AUTH SCREEN -->
     <div id="screen-auth" class="screen active">
       <div class="container">
-        <div class="header">
+        <div class="hero">
           <span class="logo">✦ PromptCraft</span>
-          <p class="tagline">Turn rough ideas into powerful AI prompts</p>
+          <h1 class="hero-title">Better prompts.<br />Better AI results.</h1>
+          <p class="hero-sub">
+            Most people type vague ideas into AI and get vague answers back.
+            PromptCraft fixes that — it asks the right questions and builds a
+            precise, structured prompt that gets real results.
+          </p>
         </div>
+
+        <!-- How it works -->
+        <div class="how-it-works">
+          <div class="step-pill">
+            <span class="step-num">1</span>
+            <span class="step-text">Type your rough idea</span>
+          </div>
+          <span class="step-arrow">→</span>
+          <div class="step-pill">
+            <span class="step-num">2</span>
+            <span class="step-text">Answer smart questions</span>
+          </div>
+          <span class="step-arrow">→</span>
+          <div class="step-pill">
+            <span class="step-num">3</span>
+            <span class="step-text">Copy your optimized prompt</span>
+          </div>
+        </div>
+
+        <!-- Auth card -->
         <div class="card">
           <div class="auth-tabs">
             <button
@@ -115,6 +140,7 @@
                 id="user-input"
                 placeholder="e.g. write me an email, fix my code, summarize this document..."
                 rows="4"
+                maxlength="1000"
               ></textarea>
               <button
                 class="mic-btn"
@@ -123,7 +149,6 @@
                 title="Voice input"
               >
                 <svg
-                  id="mic-icon"
                   xmlns="http://www.w3.org/2000/svg"
                   width="16"
                   height="16"
@@ -143,10 +168,14 @@
                 </svg>
               </button>
             </div>
+            <p class="char-counter" id="char-counter">0 / 1000</p>
+
             <div class="upload-section">
               <label
                 >Attach files
-                <span class="muted">(optional — .pdf or .txt)</span></label
+                <span class="muted"
+                  >(optional — .pdf or .txt, multiple allowed)</span
+                ></label
               >
               <div id="drop-zone" class="drop-zone">
                 <span
@@ -167,6 +196,7 @@
               </div>
               <div id="file-list" class="file-list"></div>
             </div>
+
             <button onclick="handleInput()">Generate Questions →</button>
           </div>
         </div>
