@@ -43,6 +43,9 @@ async def call_ollama(prompt: str, max_tokens: int = 512) -> str:
 
 import re
 
+import json
+import re
+
 def extract_json_array(raw: str):
     raw = (
         raw.strip()
@@ -52,24 +55,55 @@ def extract_json_array(raw: str):
         .strip()
     )
 
-    # Find either a JSON object or array
-    match = re.search(r"(\{.*\}|\[.*\])", raw, re.DOTALL)
-
-    if not match:
-        log.warning(f"No JSON found in Ollama output: {raw[:200]}")
-        return None
-
+    # --------------------
+    # 1. Try direct JSON
+    # --------------------
     try:
-        parsed = json.loads(match.group())
+        parsed = json.loads(raw)
 
         if isinstance(parsed, list):
             return [str(x).strip() for x in parsed]
 
         if isinstance(parsed, dict):
+            if "questions" in parsed:
+                return [str(x).strip() for x in parsed["questions"]]
+
             return [str(v).strip() for v in parsed.values()]
 
-    except json.JSONDecodeError as e:
-        log.warning(f"JSON decode failed: {e}")
-        return None
+    except Exception:
+        pass
+
+    # --------------------
+    # 2. Find embedded JSON
+    # --------------------
+    match = re.search(r"(\{.*\}|\[.*\])", raw, re.DOTALL)
+
+    if match:
+        try:
+            parsed = json.loads(match.group())
+
+            if isinstance(parsed, list):
+                return [str(x).strip() for x in parsed]
+
+            if isinstance(parsed, dict):
+                if "questions" in parsed:
+                    return [str(x).strip() for x in parsed["questions"]]
+
+                return [str(v).strip() for v in parsed.values()]
+        except Exception:
+            pass
+
+    # --------------------
+    # 3. Parse Q1:, Q2:...
+    # --------------------
+    questions = []
+
+    for line in raw.splitlines():
+        m = re.match(r"Q\d+\s*:\s*(.+)", line.strip())
+        if m:
+            questions.append(m.group(1).strip())
+
+    if questions:
+        return questions
 
     return None

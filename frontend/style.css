@@ -189,11 +189,23 @@ body {
   margin-bottom: 14px;
 }
 
-.auth-error {
+.forgot-link {
   font-size: 13px;
-  color: var(--danger);
+  color: var(--accent);
+  cursor: pointer;
+  text-align: center;
+  margin-top: -4px;
+}
+
+.forgot-link:hover { text-decoration: underline; }
+
+.auth-success {
+  font-size: 13px;
+  color: #16a34a;
   margin-bottom: 8px;
 }
+
+
 
 /* Card */
 .card {

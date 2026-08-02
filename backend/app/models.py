@@ -7,10 +7,12 @@ from app.database import Base
 class User(Base):
     __tablename__ = "users"
 
-    email      = Column(String, primary_key=True, index=True)
-    name       = Column(String, nullable=False)
-    password   = Column(String, nullable=False)  # bcrypt hash
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    email             = Column(String, primary_key=True, index=True)
+    name              = Column(String, nullable=False)
+    password          = Column(String, nullable=False)
+    reset_token       = Column(String, nullable=True)
+    reset_token_expiry= Column(DateTime(timezone=True), nullable=True)
+    created_at        = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class Prompt(Base):

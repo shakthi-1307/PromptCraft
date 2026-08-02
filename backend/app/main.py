@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
@@ -13,13 +14,14 @@ from app.models import User, Prompt
 from app.schemas import (
     SignupRequest, LoginRequest,
     GenerateQuestionsRequest, GeneratePromptRequest,
-    SavePromptRequest,
+    SavePromptRequest, ForgotPasswordRequest, ResetPasswordRequest,
 )
 from app.auth import hash_password, verify_password, create_token, decode_token
 from app.limiter import limiter, rate_limit_handler
 from app.services.ollama import call_ollama, extract_json_array
 from app.services.file import uploaded_files, extract_text, build_file_context
-from app.services.email import send_welcome_email
+from app.services.email import send_welcome_email, send_reset_email
+from app.services.sanitizer import check_injection, sanitize_input
 from app.logger import setup_logging, get_logger
 
 setup_logging()
@@ -69,6 +71,66 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     return {"token": create_token(body.email), "name": user.name}
 
 
+@app.post("/auth/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.email == body.email))
+    user   = result.scalar_one_or_none()
+
+    # Always return success to prevent email enumeration
+    if not user:
+        log.warning(f"Password reset requested for unknown email: {body.email}")
+        return {"message": "If that email exists, a reset link has been sent."}
+
+    # Generate a short-lived token (30 min)
+    token  = create_token(body.email, expires_minutes=30)
+    expiry = datetime.now(timezone.utc) + timedelta(minutes=30)
+
+    user.reset_token        = token
+    user.reset_token_expiry = expiry
+    await db.commit()
+
+    base_url   = str(request.base_url).rstrip("/")
+    reset_link = f"{base_url}/reset-password.html?token={token}"
+
+    send_reset_email(body.email, user.name, reset_link)
+    log.info(f"Password reset email sent to: {body.email}")
+    return {"message": "If that email exists, a reset link has been sent."}
+
+
+@app.post("/auth/reset-password")
+async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    from jose import JWTError, jwt
+    from app.config import settings as s
+
+    try:
+        payload = jwt.decode(body.token, s.JWT_SECRET, algorithms=[s.JWT_ALGORITHM])
+        email   = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=400, detail="Invalid reset token.")
+    except JWTError:
+        log.warning("Reset password attempt with invalid/expired token")
+        raise HTTPException(status_code=400, detail="Reset link is invalid or has expired.")
+
+    result = await db.execute(select(User).where(User.email == email))
+    user   = result.scalar_one_or_none()
+
+    if not user or user.reset_token != body.token:
+        log.warning(f"Reset token mismatch for: {email}")
+        raise HTTPException(status_code=400, detail="Reset link is invalid or has already been used.")
+
+    if user.reset_token_expiry and user.reset_token_expiry < datetime.now(timezone.utc):
+        log.warning(f"Expired reset token used for: {email}")
+        raise HTTPException(status_code=400, detail="Reset link has expired. Please request a new one.")
+
+    user.password          = hash_password(body.new_password)
+    user.reset_token       = None
+    user.reset_token_expiry= None
+    await db.commit()
+
+    log.info(f"Password reset successfully for: {email}")
+    return {"message": "Password updated successfully."}
+
+
 # --- File Upload ---
 
 @app.post("/upload")
@@ -101,14 +163,21 @@ async def delete_file(filename: str, email: str = Depends(decode_token)):
 @app.post("/generate-questions")
 @limiter.limit("10/minute")
 async def generate_questions(request: Request, body: GenerateQuestionsRequest, email: str = Depends(decode_token)):
-    log.info(f"Generating questions for: {email} | input length: {len(body.user_input)} | files: {body.filenames}")
+    # Sanitize and check for injection
+    clean_input = sanitize_input(body.user_input)
+    is_safe, reason = check_injection(clean_input)
+    if not is_safe:
+        log.warning(f"Injection attempt blocked in generate-questions | user: {email} | reason: {reason}")
+        raise HTTPException(status_code=400, detail="Invalid input detected. Please describe your task clearly.")
+
+    log.info(f"Generating questions for: {email} | input length: {len(clean_input)} | files: {body.filenames}")
 
     file_context  = build_file_context(body.filenames)
     context_block = f"\n\nThe user has also uploaded the following file(s):\n{file_context}" if file_context else ""
 
-    prompt = f"""Task: "{body.user_input}"{context_block}
+    prompt = f"""Task: "{clean_input}"{context_block}
 
-Generate 4 concise clarifying questions to fill gaps needed for a precise AI prompt.
+Generate 5 to 7 (the number of questions depends on how much you want to ask from the user to provide a very good prompt) concise clarifying questions to fill gaps needed for a precise AI prompt.
 Each question targets one unknown: audience, format, constraints, tone, scope, or goal.
 No generic questions. Each must be specific to this task.
 
@@ -133,9 +202,23 @@ Output: JSON array only. No other text.
 @app.post("/generate-prompt")
 @limiter.limit("10/minute")
 async def generate_prompt(request: Request, body: GeneratePromptRequest, email: str = Depends(decode_token)):
-    log.info(f"Generating prompt for: {email} | input length: {len(body.user_input)}")
+    # Sanitize and check for injection on input and answers
+    clean_input = sanitize_input(body.user_input)
+    is_safe, reason = check_injection(clean_input)
+    if not is_safe:
+        log.warning(f"Injection attempt blocked in generate-prompt | user: {email} | reason: {reason}")
+        raise HTTPException(status_code=400, detail="Invalid input detected. Please describe your task clearly.")
 
-    qa_pairs      = "\n".join(f"Q: {q}\nA: {a}" for q, a in zip(body.questions, body.answers))
+    clean_answers = [sanitize_input(a) for a in body.answers]
+    for i, answer in enumerate(clean_answers):
+        is_safe, reason = check_injection(answer)
+        if not is_safe:
+            log.warning(f"Injection attempt in answer[{i}] | user: {email} | reason: {reason}")
+            raise HTTPException(status_code=400, detail="Invalid content detected in your answers.")
+
+    log.info(f"Generating prompt for: {email} | input length: {len(clean_input)}")
+
+    qa_pairs      = "\n".join(f"Q: {q}\nA: {a}" for q, a in zip(body.questions, clean_answers))
     file_context  = build_file_context(body.filenames)
     context_block = f"\n\nUploaded files for context:\n{file_context}" if file_context else ""
 
@@ -146,7 +229,7 @@ Rules for the output prompt:
 - Specify role, task, constraints, and output format in the fewest words possible
 - Output must be copy-paste ready, under 200 words unless complexity demands more
 
-Task: "{body.user_input}"{context_block}
+Task: "{clean_input}"{context_block}
 
 Clarifications:
 {qa_pairs}

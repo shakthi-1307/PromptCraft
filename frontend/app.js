@@ -57,12 +57,50 @@ function validateInput(value, { min = 0, max = Infinity, label = "Field" } = {})
 // --- Auth tab switch ---
 
 function switchTab(tab) {
-  document.getElementById("form-login").classList.toggle("hidden", tab !== "login");
-  document.getElementById("form-signup").classList.toggle("hidden", tab !== "signup");
-  document.getElementById("tab-login").classList.toggle("active", tab === "login");
-  document.getElementById("tab-signup").classList.toggle("active", tab === "signup");
-  document.getElementById("login-error").classList.add("hidden");
-  document.getElementById("signup-error").classList.add("hidden");
+  document.getElementById("form-login").classList.toggle("hidden",   tab !== "login");
+  document.getElementById("form-signup").classList.toggle("hidden",  tab !== "signup");
+  document.getElementById("form-forgot").classList.toggle("hidden",  tab !== "forgot");
+  document.getElementById("tab-login").classList.toggle("active",    tab === "login");
+  document.getElementById("tab-signup").classList.toggle("active",   tab === "signup");
+  ["login-error", "signup-error", "forgot-error", "forgot-success"].forEach((id) => {
+    document.getElementById(id)?.classList.add("hidden");
+  });
+}
+
+async function handleForgot() {
+  const email = document.getElementById("forgot-email").value.trim();
+  if (!email) { showForgotMessage("error", "Please enter your email."); return; }
+
+  const btn = document.getElementById("forgot-btn");
+  btn.disabled = true;
+  btn.textContent = "Sending...";
+
+  try {
+    const res  = await fetch("/auth/forgot-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    showForgotMessage("success", "If that email exists, a reset link has been sent. Check your inbox.");
+    btn.textContent = "Sent ✓";
+  } catch (err) {
+    showForgotMessage("error", "Something went wrong. Please try again.");
+    btn.disabled = false;
+    btn.textContent = "Send Reset Link →";
+  }
+}
+
+function showForgotMessage(type, message) {
+  const errEl = document.getElementById("forgot-error");
+  const sucEl = document.getElementById("forgot-success");
+  if (type === "error") {
+    errEl.textContent = message; errEl.classList.remove("hidden");
+    sucEl.classList.add("hidden");
+  } else {
+    sucEl.textContent = message; sucEl.classList.remove("hidden");
+    errEl.classList.add("hidden");
+  }
 }
 
 function showAuthError(formId, message) {
