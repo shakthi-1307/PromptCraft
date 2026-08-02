@@ -10,9 +10,9 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_HOURS: int = 24
 
-    # Ollama
-    OLLAMA_URL: str = "http://localhost:11434/api/generate"
-    OLLAMA_MODEL: str = "qwen2.5:1.5b "
+    # Groq
+    GROQ_API_KEY: str
+    GROQ_MODEL: str = "llama-3.1-8b-instant"
 
     # Gmail
     GMAIL_USER: str = ""

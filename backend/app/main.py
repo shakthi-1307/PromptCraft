@@ -18,7 +18,7 @@ from app.schemas import (
 )
 from app.auth import hash_password, verify_password, create_token, decode_token
 from app.limiter import limiter, rate_limit_handler
-from app.services.ollama import call_ollama, extract_json_array
+from app.services.groq import call_groq, extract_json_array
 from app.services.file import uploaded_files, extract_text, build_file_context
 from app.services.email import send_welcome_email, send_reset_email
 from app.services.sanitizer import check_injection, sanitize_input
@@ -177,7 +177,7 @@ async def generate_questions(request: Request, body: GenerateQuestionsRequest, e
 
     prompt = f"""Task: "{clean_input}"{context_block}
 
-Generate 5 to 7 (the number of questions depends on how much you want to ask from the user to provide a very good prompt) concise clarifying questions to fill gaps needed for a precise AI prompt.
+Generate 5 to 7 (the number of questions depends on how much you want to ask from the user to provide a very good prompt) clarifying questions to fill gaps needed for a precise AI prompt.
 Each question targets one unknown: audience, format, constraints, tone, scope, or goal.
 No generic questions. Each must be specific to this task.
 
@@ -185,14 +185,14 @@ Output: JSON array only. No other text.
 ["Q1?","Q2?","Q3?","Q4?"]"""
 
     try:
-        raw = await call_ollama(prompt, max_tokens=256)
+        raw = await call_groq(prompt, max_tokens=256)
     except HTTPException as e:
-        log.error(f"Ollama error during question generation for {email}: {e.detail}")
+        log.error(f"Groq error during question generation for {email}: {e.detail}")
         raise
 
     questions = extract_json_array(raw)
     if not questions:
-        log.error(f"Failed to parse questions from Ollama response for {email}. Raw: {raw[:200]}")
+        log.error(f"Failed to parse questions from Groq response for {email}. Raw: {raw[:200]}")
         raise HTTPException(status_code=500, detail="Failed to parse questions from AI response")
 
     log.info(f"Questions generated successfully for: {email}")
@@ -237,9 +237,9 @@ Clarifications:
 Output: the final prompt text only. No explanation, no preamble, no markdown."""
 
     try:
-        final_prompt = await call_ollama(prompt, max_tokens=400)
+        final_prompt = await call_groq(prompt, max_tokens=400)
     except HTTPException as e:
-        log.error(f"Ollama error during prompt generation for {email}: {e.detail}")
+        log.error(f"Groq error during prompt generation for {email}: {e.detail}")
         raise
 
     log.info(f"Prompt generated successfully for: {email} | output length: {len(final_prompt)}")
