@@ -5,7 +5,6 @@ pymupdf
 python-multipart
 sqlalchemy[asyncio]
 asyncpg
-psycopg2-binary
 passlib[bcrypt]
 passlib[argon2]
 python-jose[cryptography]
