@@ -9,4 +9,6 @@ passlib[bcrypt]
 passlib[argon2]
 python-jose[cryptography]
 pydantic-settings
+pydantic[email]
+email-validator
 slowapi
