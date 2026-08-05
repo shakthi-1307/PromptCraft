@@ -380,7 +380,31 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .question-block p { font-size: 14px; font-weight: 500; line-height: 1.4; }
 .questions-divider { height: 1px; background: var(--border); }
 
-/* Prompt output */
+/* Prompt output header */
+.prompt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.token-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 100px;
+}
+
+.token-badge.good  { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+.token-badge.warn  { background: #fefce8; border-color: #fde68a; color: #a16207; }
+.token-badge.heavy { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+
+
 #prompt-output {
   background: var(--bg);
   border: 1px solid var(--border);

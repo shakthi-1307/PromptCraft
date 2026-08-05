@@ -18,7 +18,7 @@ from app.schemas import (
 )
 from app.auth import hash_password, verify_password, create_token, decode_token
 from app.limiter import limiter, rate_limit_handler
-from app.services.groq import call_groq, extract_json_array
+from app.services.groq import call_groq, extract_json_array, compress_prompt, estimate_tokens
 from app.services.file import uploaded_files, extract_text, build_file_context
 from app.services.email import send_welcome_email, send_reset_email
 from app.services.sanitizer import check_injection, sanitize_input
@@ -202,7 +202,7 @@ Output: JSON array only. No other text.
 @app.post("/generate-prompt")
 @limiter.limit("10/minute")
 async def generate_prompt(request: Request, body: GeneratePromptRequest, email: str = Depends(decode_token)):
-    # Sanitize and check for injection on input and answers
+    # Sanitize and check for injection
     clean_input = sanitize_input(body.user_input)
     is_safe, reason = check_injection(clean_input)
     if not is_safe:
@@ -220,30 +220,50 @@ async def generate_prompt(request: Request, body: GeneratePromptRequest, email: 
 
     qa_pairs      = "\n".join(f"Q: {q}\nA: {a}" for q, a in zip(body.questions, clean_answers))
     file_context  = build_file_context(body.filenames)
-    context_block = f"\n\nUploaded files for context:\n{file_context}" if file_context else ""
+    context_block = f"\n\nFile context:\n{file_context}" if file_context else ""
 
-    prompt = f"""Build a tight, token-efficient AI prompt from the inputs below.
-Rules for the output prompt:
-- Use imperative verbs, no filler phrases ("please", "I want you to", "could you")
-- Pack context densely — no repetition
-- Specify role, task, constraints, and output format in the fewest words possible
-- Output must be copy-paste ready, under 200 words unless complexity demands more
+    # ── PASS 1: Generate structured draft ──────────────────────────────────
+    draft_instruction = f"""You are a prompt engineer. Generate a structured AI prompt using ONLY this format:
 
-Task: "{clean_input}"{context_block}
+Role: [who the AI should be — one short phrase]
+Task: [imperative verb + exact object — one sentence max]
+Context: [only facts strictly necessary — omit if none needed]
+Constraints: [format, length, tone, audience — comma separated, omit if none]
+Output: [exact format expected — one line]
+
+Rules:
+- Use imperative verbs only (Write, Summarize, Analyze, Generate, Fix, Explain)
+- No filler: no "please", "make sure", "I want you to", "could you", "ensure that"
+- Each field: one line maximum
+- Omit any field that adds no information
+
+User task: {clean_input}{context_block}
 
 Clarifications:
 {qa_pairs}
 
-Output: the final prompt text only. No explanation, no preamble, no markdown."""
+Return ONLY the structured prompt. No explanation, no preamble."""
 
     try:
-        final_prompt = await call_groq(prompt, max_tokens=400)
+        draft = await call_groq(draft_instruction, max_tokens=350, temperature=0.2)
     except HTTPException as e:
-        log.error(f"Groq error during prompt generation for {email}: {e.detail}")
+        log.error(f"Groq error during draft generation for {email}: {e.detail}")
         raise
 
-    log.info(f"Prompt generated successfully for: {email} | output length: {len(final_prompt)}")
-    return {"prompt": final_prompt.strip()}
+    log.info(f"Draft generated for {email} | draft_len: {len(draft)}")
+
+    # ── PASS 2: Compress the draft ─────────────────────────────────────────
+    try:
+        final_prompt = await compress_prompt(draft)
+    except HTTPException as e:
+        log.warning(f"Compression failed for {email}, using draft: {e.detail}")
+        final_prompt = draft  # fallback to draft if compression fails
+
+    # ── Token count ────────────────────────────────────────────────────────
+    token_count = estimate_tokens(final_prompt)
+
+    log.info(f"Prompt ready for {email} | final_len: {len(final_prompt)} | est_tokens: {token_count}")
+    return {"prompt": final_prompt.strip(), "token_count": token_count}
 
 
 # --- Prompt History ---

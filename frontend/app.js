@@ -313,6 +313,7 @@ async function handleGenerate() {
     if (res.status === 429) { hideLoader(); showToast(data.detail); return; }
     if (!res.ok) throw new Error(data.detail || "Error");
     document.getElementById("prompt-output").textContent = data.prompt;
+    showTokenBadge(data.token_count || 0);
     renderResultFiles();
     hideLoader();
     showStep("step-result");
@@ -339,6 +340,16 @@ function renderResultFiles() {
   section.classList.remove("hidden");
 }
 
+function showTokenBadge(count) {
+  const badge = document.getElementById("token-badge");
+  const label = document.getElementById("token-count");
+  label.textContent = count;
+  badge.classList.remove("hidden", "good", "warn", "heavy");
+  if (count <= 80)       badge.classList.add("good");
+  else if (count <= 150) badge.classList.add("warn");
+  else                   badge.classList.add("heavy");
+}
+
 function copyPrompt() {
   navigator.clipboard.writeText(document.getElementById("prompt-output").textContent)
     .then(() => showToast("Copied to clipboard"));
@@ -355,6 +366,8 @@ async function startOver() {
   document.getElementById("file-list").innerHTML = "";
   document.getElementById("result-file-list").innerHTML = "";
   document.getElementById("result-files").classList.add("hidden");
+  document.getElementById("token-badge").classList.add("hidden");
+  document.getElementById("token-count").textContent = "0";
   document.getElementById("char-counter").textContent = "0 / 1000";
   document.getElementById("char-counter").className = "char-counter";
   showStep("step-input");
