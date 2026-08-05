@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Request, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,7 +43,7 @@ async def startup():
 # --- Auth ---
 
 @app.post("/auth/signup")
-async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
+async def signup(body: SignupRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email))
     if result.scalar_one_or_none():
         log.warning(f"Signup failed — email already registered: {body.email}")
@@ -54,7 +54,8 @@ async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
     await db.commit()
     log.info(f"New user signed up: {body.email}")
 
-    send_welcome_email(body.email, body.name)
+    # Run email in background — never blocks or crashes signup if SMTP fails
+    background_tasks.add_task(send_welcome_email, body.email, body.name)
     return {"token": create_token(body.email), "name": body.name}
 
 
@@ -72,7 +73,7 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @app.post("/auth/forgot-password")
-async def forgot_password(body: ForgotPasswordRequest, request: Request, db: AsyncSession = Depends(get_db)):
+async def forgot_password(body: ForgotPasswordRequest, request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email))
     user   = result.scalar_one_or_none()
 
@@ -92,8 +93,8 @@ async def forgot_password(body: ForgotPasswordRequest, request: Request, db: Asy
     base_url   = str(request.base_url).rstrip("/")
     reset_link = f"{base_url}/reset-password.html?token={token}"
 
-    send_reset_email(body.email, user.name, reset_link)
-    log.info(f"Password reset email sent to: {body.email}")
+    background_tasks.add_task(send_reset_email, body.email, user.name, reset_link)
+    log.info(f"Password reset email queued for: {body.email}")
     return {"message": "If that email exists, a reset link has been sent."}
 
 
@@ -177,7 +178,7 @@ async def generate_questions(request: Request, body: GenerateQuestionsRequest, e
 
     prompt = f"""Task: "{clean_input}"{context_block}
 
-You are a great analyzer and wants to understand the user's input.
+You are a great analyzer and wants to understand the user's input. 
 Generate 5 to 7 (the number of questions depends on how much you want to ask from the user to provide a very good prompt) clarifying questions.
 Each question targets one unknown: audience, format, constraints, tone, scope, or goal.
 No generic questions. Each must be specific to this task.
