@@ -247,28 +247,49 @@
 
       <!-- Step 3: Result -->
       <div id="step-result" class="step">
-        <div class="container">
-          <div class="header">
-            <p class="tagline">Your prompt is ready</p>
-          </div>
-          <div class="card">
+        <div class="container result-container">
+          <!-- Left: prompt -->
+          <div class="card result-card">
             <div class="prompt-header">
               <label>Your optimized prompt</label>
               <div id="token-badge" class="token-badge hidden">
                 <span id="token-count">0</span> tokens
               </div>
             </div>
-            <div id="prompt-output"></div>
+
+            <!-- Read-only view -->
+            <div id="prompt-display" class="prompt-display"></div>
+
+            <!-- Edit view (hidden by default) -->
+            <textarea
+              id="prompt-output"
+              class="prompt-editable hidden"
+              spellcheck="false"
+            ></textarea>
+
             <div id="result-files" class="result-files hidden">
               <label>Attach these files when using this prompt</label>
               <div id="result-file-list" class="file-list"></div>
             </div>
+
             <div class="result-actions">
               <button onclick="copyPrompt()">Copy Prompt</button>
+              <button class="btn-edit" id="btn-edit" onclick="toggleEdit()">
+                ✎ Edit Prompt
+              </button>
               <button class="btn-secondary" onclick="startOver()">
                 Start Over
               </button>
             </div>
+          </div>
+
+          <!-- Right: coverage panel -->
+          <div id="coverage-panel" class="coverage-panel hidden">
+            <p class="coverage-title">Answer coverage</p>
+            <p class="coverage-sub">
+              Checks if your answers made it into the prompt
+            </p>
+            <div id="coverage-list" class="coverage-list"></div>
           </div>
         </div>
       </div>

@@ -37,46 +37,99 @@ async def call_groq(prompt: str, max_tokens: int = 512, temperature: float = 0.3
     return result
 
 
-async def compress_prompt(draft: str) -> str:
+async def compress_prompt(draft: str, answered_points: str = "") -> str:
     """
     Second-pass compression.
-    Takes a draft prompt and strips all filler, enforces key-value structure,
-    and targets the absolute minimum tokens needed to convey the same intent.
+    Removes filler words and redundant phrasing ONLY.
+    Every piece of content the user provided must survive intact.
     """
-    compression_instruction = f"""You are a prompt compression expert. Your only job is to rewrite the prompt below into the most token-efficient version possible while preserving 100% of its meaning and intent.
+    preservation_block = f"""
+CONTENT THAT MUST BE PRESERVED (do not remove or summarize any of these):
+{answered_points}
+""" if answered_points.strip() else ""
+
+    compression_instruction = f"""You are a prompt compression expert. Rewrite the prompt below to be more concise by removing ONLY filler words and redundant phrasing.
 
 STRICT RULES:
-1. Use this exact structure — nothing else:
-   Role: [one short phrase]
-   Task: [imperative verb + exact object]
-   Context: [only facts the AI cannot infer — omit if unnecessary]
-   Constraints: [format, length, tone, audience — comma separated]
-   Output: [exact format expected]
-
-2. Remove ALL of these without exception:
-   - "please", "could you", "I want you to", "I would like", "make sure", "ensure that"
-   - Any sentence that restates another sentence
-   - Transitional phrases ("First,", "Additionally,", "Finally,")
-   - Meta-commentary ("This prompt is for...", "The goal is...")
-
-3. Every word must earn its place. If removing a word does not change what the AI will do — remove it.
-
-4. The output must be under 80 words unless the task is genuinely complex.
-
-5. Return ONLY the compressed prompt. No explanation, no preamble, no markdown, no quotes.
-
-DRAFT PROMPT TO COMPRESS:
+1. NEVER remove specific facts, points, or details — only remove the words around them
+2. NEVER merge two distinct points into one if information is lost
+3. Remove ONLY: "please", "could you", "I want you to", "I would like", "make sure", "ensure that", transitional phrases, meta-commentary
+4. Keep the exact Role/Task/Context/Constraints/Output structure
+5. Context field must retain ALL specific details — shorten the words, not the content
+6. Return ONLY the compressed prompt. No explanation, no preamble, no markdown.
+{preservation_block}
+DRAFT TO COMPRESS:
 {draft}"""
 
-    result = await call_groq(compression_instruction, max_tokens=300, temperature=0.1)
+    result = await call_groq(compression_instruction, max_tokens=400, temperature=0.1)
     return result.strip()
+
+
+async def check_coverage(questions: list, answers: list, final_prompt: str) -> list:
+    """
+    For each Q&A pair, check whether the answer's intent is reflected
+    in the final prompt — directly or indirectly.
+    Returns a list of dicts: {question, answer, covered: bool, reason: str}
+    """
+    qa_block = "\n".join(
+        f"{i+1}. Q: {q}\n   A: {a}"
+        for i, (q, a) in enumerate(zip(questions, answers))
+        if a.strip()
+    )
+
+    check_instruction = f"""You are verifying whether a user's answers are reflected in an AI prompt.
+
+For each Q&A pair below, determine if the answer's meaning or intent is present in the final prompt — either directly (same words) or indirectly (same meaning expressed differently).
+
+Q&A PAIRS:
+{qa_block}
+
+FINAL PROMPT:
+{final_prompt}
+
+For each numbered Q&A pair, respond with ONLY a JSON array in this exact format — nothing else:
+[
+  {{"index": 1, "covered": true, "reason": "one short phrase explaining how it's covered"}},
+  {{"index": 2, "covered": false, "reason": "one short phrase explaining what's missing"}}
+]
+
+Rules:
+- covered: true if the answer's meaning appears anywhere in the prompt
+- covered: false only if the answer's intent is completely absent
+- reason: under 8 words
+- Return ONLY the JSON array. No explanation, no preamble."""
+
+    try:
+        raw = await call_groq(check_instruction, max_tokens=300, temperature=0.0)
+        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        parsed = json.loads(raw)
+
+        results = []
+        for i, (q, a) in enumerate(zip(questions, answers)):
+            if not a.strip():
+                continue
+            match = next((item for item in parsed if item.get("index") == i + 1), None)
+            results.append({
+                "question": q,
+                "answer": a,
+                "covered": match.get("covered", True) if match else True,
+                "reason": match.get("reason", "") if match else "",
+            })
+        return results
+
+    except Exception as e:
+        log.warning(f"Coverage check failed: {e} — defaulting all to covered")
+        return [
+            {"question": q, "answer": a, "covered": True, "reason": "included"}
+            for q, a in zip(questions, answers) if a.strip()
+        ]
 
 
 def estimate_tokens(text: str) -> int:
     """
     Estimate token count using the standard approximation:
     1 token ≈ 4 characters for English text.
-    This matches GPT/Claude tokenizers closely enough for display purposes.
+    Matches GPT/Claude tokenizers closely enough for display purposes.
     """
     return max(1, len(text) // 4)
 

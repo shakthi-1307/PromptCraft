@@ -18,7 +18,7 @@ from app.schemas import (
 )
 from app.auth import hash_password, verify_password, create_token, decode_token
 from app.limiter import limiter, rate_limit_handler
-from app.services.groq import call_groq, extract_json_array, compress_prompt, estimate_tokens
+from app.services.groq import call_groq, extract_json_array, compress_prompt, estimate_tokens, check_coverage
 from app.services.file import uploaded_files, extract_text, build_file_context
 from app.services.email import send_welcome_email, send_reset_email
 from app.services.sanitizer import check_injection, sanitize_input
@@ -177,7 +177,8 @@ async def generate_questions(request: Request, body: GenerateQuestionsRequest, e
 
     prompt = f"""Task: "{clean_input}"{context_block}
 
-Generate 5 to 7 (the number of questions depends on how much you want to ask from the user to provide a very good prompt) clarifying questions to fill gaps needed for a precise AI prompt.
+You are a great analyzer and wants to understand the user's input.
+Generate 5 to 7 (the number of questions depends on how much you want to ask from the user to provide a very good prompt) clarifying questions.
 Each question targets one unknown: audience, format, constraints, tone, scope, or goal.
 No generic questions. Each must be specific to this task.
 
@@ -223,47 +224,67 @@ async def generate_prompt(request: Request, body: GeneratePromptRequest, email: 
     context_block = f"\n\nFile context:\n{file_context}" if file_context else ""
 
     # ── PASS 1: Generate structured draft ──────────────────────────────────
-    draft_instruction = f"""You are a prompt engineer. Generate a structured AI prompt using ONLY this format:
+    # Build a readable summary of what the user answered so nothing gets lost
+    answered_points = "\n".join(
+        f"- {a.strip()}" for a in clean_answers if a.strip()
+    )
 
+    draft_instruction = f"""You are a prompt engineer. Your job is to convert a user's task and their answers into a structured AI prompt.
+
+CRITICAL RULE: Every specific detail, point, and fact the user provided in their answers MUST appear in the final prompt. Do not drop, merge, or summarize away any information the user gave. Token optimization means removing filler words — never removing the user's content.
+
+Use ONLY this format:
 Role: [who the AI should be — one short phrase]
-Task: [imperative verb + exact object — one sentence max]
-Context: [only facts strictly necessary — omit if none needed]
-Constraints: [format, length, tone, audience — comma separated, omit if none]
-Output: [exact format expected — one line]
+Task: [imperative verb + exact object — one sentence]
+Context: [ALL specific details from user answers — preserve every point]
+Constraints: [format, length, tone, audience — from user answers]
+Output: [exact format expected]
 
 Rules:
-- Use imperative verbs only (Write, Summarize, Analyze, Generate, Fix, Explain)
-- No filler: no "please", "make sure", "I want you to", "could you", "ensure that"
-- Each field: one line maximum
-- Omit any field that adds no information
+- Use imperative verbs (Write, Summarize, Analyze, Generate, Fix, Explain)
+- No filler: no "please", "make sure", "I want you to", "could you"
+- Context field must contain ALL key points the user mentioned — list them if needed
+- Do NOT omit any answer the user gave
 
 User task: {clean_input}{context_block}
 
-Clarifications:
+User's answers to clarifying questions:
 {qa_pairs}
+
+Key points from user's answers (ALL must appear in the prompt):
+{answered_points}
 
 Return ONLY the structured prompt. No explanation, no preamble."""
 
     try:
-        draft = await call_groq(draft_instruction, max_tokens=350, temperature=0.2)
+        draft = await call_groq(draft_instruction, max_tokens=500, temperature=0.2)
     except HTTPException as e:
         log.error(f"Groq error during draft generation for {email}: {e.detail}")
         raise
 
     log.info(f"Draft generated for {email} | draft_len: {len(draft)}")
 
-    # ── PASS 2: Compress the draft ─────────────────────────────────────────
+    # ── PASS 2: Compress the draft — preserve all content, remove only filler ──
     try:
-        final_prompt = await compress_prompt(draft)
+        final_prompt = await compress_prompt(draft, answered_points)
     except HTTPException as e:
         log.warning(f"Compression failed for {email}, using draft: {e.detail}")
-        final_prompt = draft  # fallback to draft if compression fails
+        final_prompt = draft
 
     # ── Token count ────────────────────────────────────────────────────────
     token_count = estimate_tokens(final_prompt)
 
+    # ── PASS 3: Coverage check — verify all answers made it into the prompt ──
+    coverage = await check_coverage(body.questions, clean_answers, final_prompt)
+    covered_count = sum(1 for c in coverage if c["covered"])
+    log.info(f"Coverage check: {covered_count}/{len(coverage)} answers covered for {email}")
+
     log.info(f"Prompt ready for {email} | final_len: {len(final_prompt)} | est_tokens: {token_count}")
-    return {"prompt": final_prompt.strip(), "token_count": token_count}
+    return {
+        "prompt": final_prompt.strip(),
+        "token_count": token_count,
+        "coverage": coverage,
+    }
 
 
 # --- Prompt History ---

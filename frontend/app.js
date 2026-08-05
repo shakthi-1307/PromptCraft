@@ -312,8 +312,10 @@ async function handleGenerate() {
     const data = await res.json();
     if (res.status === 429) { hideLoader(); showToast(data.detail); return; }
     if (!res.ok) throw new Error(data.detail || "Error");
-    document.getElementById("prompt-output").textContent = data.prompt;
+    document.getElementById("prompt-display").textContent = data.prompt;
+    document.getElementById("prompt-output").value = data.prompt;
     showTokenBadge(data.token_count || 0);
+    renderCoveragePanel(data.coverage || []);
     renderResultFiles();
     hideLoader();
     showStep("step-result");
@@ -340,6 +342,49 @@ function renderResultFiles() {
   section.classList.remove("hidden");
 }
 
+function toggleEdit() {
+  const display  = document.getElementById("prompt-display");
+  const textarea = document.getElementById("prompt-output");
+  const btn      = document.getElementById("btn-edit");
+  const isEditing = !textarea.classList.contains("hidden");
+
+  if (isEditing) {
+    // Save edits — switch back to read-only
+    const edited = textarea.value.trim();
+    display.textContent = edited;
+    display.classList.remove("hidden");
+    textarea.classList.add("hidden");
+    btn.textContent = "✎ Edit Prompt";
+    btn.classList.remove("saving");
+    // Update token count for saved version
+    showTokenBadge(Math.max(1, Math.floor(edited.length / 4)));
+    showToast("Edits saved");
+  } else {
+    // Enter edit mode
+    textarea.value = display.textContent;
+    display.classList.add("hidden");
+    textarea.classList.remove("hidden");
+    textarea.focus();
+    btn.textContent = "✓ Save Edits";
+    btn.classList.add("saving");
+  }
+}
+
+// Live token update while editing
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("prompt-output").addEventListener("input", () => {
+    const text  = document.getElementById("prompt-output").value;
+    const count = Math.max(1, Math.floor(text.length / 4));
+    document.getElementById("token-count").textContent = count;
+    const badge = document.getElementById("token-badge");
+    badge.classList.remove("good", "warn", "heavy");
+    if (count <= 80)       badge.classList.add("good");
+    else if (count <= 150) badge.classList.add("warn");
+    else                   badge.classList.add("heavy");
+  });
+});
+
+
 function showTokenBadge(count) {
   const badge = document.getElementById("token-badge");
   const label = document.getElementById("token-count");
@@ -350,9 +395,52 @@ function showTokenBadge(count) {
   else                   badge.classList.add("heavy");
 }
 
+function renderCoveragePanel(coverage) {
+  const panel = document.getElementById("coverage-panel");
+  const list  = document.getElementById("coverage-list");
+  list.innerHTML = "";
+
+  if (!coverage || coverage.length === 0) {
+    panel.classList.add("hidden");
+    return;
+  }
+
+  const allCovered  = coverage.every((c) => c.covered);
+  const noneCovered = coverage.every((c) => !c.covered);
+
+  coverage.forEach((item) => {
+    const el = document.createElement("div");
+    el.className = "coverage-item";
+    el.innerHTML = `
+      <div class="coverage-icon ${item.covered ? "covered" : "missing"}">
+        ${item.covered ? "✓" : "~"}
+      </div>
+      <div class="coverage-text">
+        <div class="coverage-answer">${escapeHtml(item.answer)}</div>
+        ${item.reason ? `<div class="coverage-reason">${escapeHtml(item.reason)}</div>` : ""}
+      </div>
+    `;
+    list.appendChild(el);
+  });
+
+  // Summary line
+  const summary = document.createElement("div");
+  summary.className = `coverage-summary ${allCovered ? "all" : "some"}`;
+  const coveredCount = coverage.filter((c) => c.covered).length;
+  summary.textContent = allCovered
+    ? `All ${coverage.length} answers included ✓`
+    : `${coveredCount} of ${coverage.length} answers included`;
+  list.appendChild(summary);
+
+  panel.classList.remove("hidden");
+}
+
 function copyPrompt() {
-  navigator.clipboard.writeText(document.getElementById("prompt-output").textContent)
-    .then(() => showToast("Copied to clipboard"));
+  const textarea = document.getElementById("prompt-output");
+  const display  = document.getElementById("prompt-display");
+  const isEditing = !textarea.classList.contains("hidden");
+  const text = isEditing ? textarea.value : display.textContent;
+  navigator.clipboard.writeText(text).then(() => showToast("Copied to clipboard"));
 }
 
 async function startOver() {
@@ -362,12 +450,19 @@ async function startOver() {
   state = { userInput: "", questions: [], uploadedFiles: [] };
   document.getElementById("user-input").value = "";
   document.getElementById("questions-list").innerHTML = "";
-  document.getElementById("prompt-output").textContent = "";
+  document.getElementById("prompt-display").textContent = "";
+  document.getElementById("prompt-output").value = "";
+  document.getElementById("prompt-display").classList.remove("hidden");
+  document.getElementById("prompt-output").classList.add("hidden");
+  document.getElementById("btn-edit").textContent = "✎ Edit Prompt";
+  document.getElementById("btn-edit").classList.remove("saving");
   document.getElementById("file-list").innerHTML = "";
   document.getElementById("result-file-list").innerHTML = "";
   document.getElementById("result-files").classList.add("hidden");
   document.getElementById("token-badge").classList.add("hidden");
   document.getElementById("token-count").textContent = "0";
+  document.getElementById("coverage-panel").classList.add("hidden");
+  document.getElementById("coverage-list").innerHTML = "";
   document.getElementById("char-counter").textContent = "0 / 1000";
   document.getElementById("char-counter").className = "char-counter";
   showStep("step-input");
