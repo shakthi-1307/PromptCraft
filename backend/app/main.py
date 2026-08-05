@@ -187,7 +187,7 @@ Output: JSON array only. No other text.
 ["Q1?","Q2?","Q3?","Q4?"]"""
 
     try:
-        raw = await call_groq(prompt, max_tokens=256)
+        raw = await call_groq(prompt, max_tokens=512)
     except HTTPException as e:
         log.error(f"Groq error during question generation for {email}: {e.detail}")
         raise
