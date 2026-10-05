@@ -258,7 +258,7 @@ Key points from user's answers (ALL must appear in the prompt):
 Return ONLY the structured prompt. No explanation, no preamble."""
 
     try:
-        draft = await call_groq(draft_instruction, max_tokens=500, temperature=0.2)
+        draft = await call_groq(draft_instruction, max_tokens=500, temperature=1.5)
     except HTTPException as e:
         log.error(f"Groq error during draft generation for {email}: {e.detail}")
         raise
