@@ -295,36 +295,159 @@ function renderQuestions(questions) {
 }
 
 async function handleGenerate() {
-  const answers = state.questions.map((_, i) => document.getElementById(`answer-${i}`)?.value.trim() || "");
+  const answers = state.questions.map((_, i) =>
+    document.getElementById(`answer-${i}`)?.value.trim() || ""
+  );
 
   const allEmpty = answers.every((a) => !a);
-  if (allEmpty) { showToast("Please answer at least one question for a better prompt."); return; }
+
+  if (allEmpty) {
+    showToast("Please answer at least one question for a better prompt.");
+    return;
+  }
 
   const safeAnswers = answers.map((a) => a.slice(0, 500));
 
   showLoader("Building your prompt...");
+
   try {
-    const res  = await fetch("/generate-prompt", {
+    const res = await fetch("/generate-prompt", {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ user_input: state.userInput, questions: state.questions, answers: safeAnswers, filenames: state.uploadedFiles.map((f) => f.filename) }),
+      body: JSON.stringify({
+        user_input: state.userInput,
+        questions: state.questions,
+        answers: safeAnswers,
+        filenames: state.uploadedFiles.map((f) => f.filename)
+      }),
     });
+
     const data = await res.json();
-    if (res.status === 429) { hideLoader(); showToast(data.detail); return; }
-    if (!res.ok) throw new Error(data.detail || "Error");
-    document.getElementById("prompt-display").textContent = data.prompt;
-    document.getElementById("prompt-output").value = data.prompt;
+
+    // =======================================================
+    // HANDLE RATE LIMIT
+    // =======================================================
+
+    if (res.status === 429) {
+      hideLoader();
+      showToast(data.detail || "Too many requests. Please try again later.");
+      return;
+    }
+
+    // =======================================================
+    // HANDLE BACKEND ERRORS
+    // =======================================================
+
+    if (!res.ok) {
+      console.error("Generate prompt error:", data);
+
+      hideLoader();
+
+      showToast(
+        data.detail ||
+        "Failed to generate the prompt. Please try again."
+      );
+
+      return;
+    }
+
+    // =======================================================
+    // VALIDATE THE ACTUAL PROMPT
+    // =======================================================
+
+    const finalPrompt = (data.prompt || "").trim();
+
+    console.log("Generated prompt:", finalPrompt);
+    console.log("Generated prompt length:", finalPrompt.length);
+    console.log("Token count:", data.token_count);
+    console.log("Coverage:", data.coverage);
+
+    // -------------------------------------------------------
+    // IMPORTANT:
+    // Never show the result screen if the backend returned
+    // an empty prompt.
+    // -------------------------------------------------------
+
+    if (!finalPrompt) {
+      console.error(
+        "Backend returned an EMPTY prompt:",
+        data
+      );
+
+      hideLoader();
+
+      showToast(
+        "The AI returned an empty prompt. Please try again."
+      );
+
+      return;
+    }
+
+    // =======================================================
+    // DISPLAY PROMPT
+    // =======================================================
+
+    const promptDisplay = document.getElementById("prompt-display");
+    const promptOutput = document.getElementById("prompt-output");
+
+    if (promptDisplay) {
+      promptDisplay.textContent = finalPrompt;
+    }
+
+    if (promptOutput) {
+      promptOutput.value = finalPrompt;
+    }
+
+    // =======================================================
+    // DISPLAY TOKEN COUNT
+    // =======================================================
+
     showTokenBadge(data.token_count || 0);
-    renderCoveragePanel(data.coverage || []);
+
+    // =======================================================
+    // DISPLAY COVERAGE
+    // =======================================================
+
+    renderCoveragePanel(
+      Array.isArray(data.coverage)
+        ? data.coverage
+        : []
+    );
+
+    // =======================================================
+    // DISPLAY FILES
+    // =======================================================
+
     renderResultFiles();
+
+    // =======================================================
+    // FINISH
+    // =======================================================
+
     hideLoader();
+
     showStep("step-result");
-    saveToHistory(state.userInput, data.prompt);
+
+    saveToHistory(
+      state.userInput,
+      finalPrompt
+    );
+
   } catch (err) {
+
+    console.error(
+      "handleGenerate failed:",
+      err
+    );
+
     hideLoader();
-    alert("Something went wrong. Please try again.");
+
+    showToast(
+      "Something went wrong. Please try again."
+    );
   }
 }
+
 
 // --- Step 3: Result ---
 

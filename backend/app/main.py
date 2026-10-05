@@ -203,38 +203,101 @@ Output: JSON array only. No other text.
 
 @app.post("/generate-prompt")
 @limiter.limit("10/minute")
-async def generate_prompt(request: Request, body: GeneratePromptRequest, email: str = Depends(decode_token)):
-    # Sanitize and check for injection
+async def generate_prompt(
+    request: Request,
+    body: GeneratePromptRequest,
+    email: str = Depends(decode_token)
+):
+    # =========================================================
+    # 1. SANITIZE USER INPUT
+    # =========================================================
+
     clean_input = sanitize_input(body.user_input)
+
     is_safe, reason = check_injection(clean_input)
+
     if not is_safe:
-        log.warning(f"Injection attempt blocked in generate-prompt | user: {email} | reason: {reason}")
-        raise HTTPException(status_code=400, detail="Invalid input detected. Please describe your task clearly.")
+        log.warning(
+            f"Injection attempt blocked in generate-prompt | "
+            f"user: {email} | reason: {reason}"
+        )
 
-    clean_answers = [sanitize_input(a) for a in body.answers]
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid input detected. Please describe your task clearly."
+        )
+
+    # ---------------------------------------------------------
+    # Sanitize answers
+    # ---------------------------------------------------------
+
+    clean_answers = [
+        sanitize_input(a)
+        for a in body.answers
+    ]
+
     for i, answer in enumerate(clean_answers):
+
         is_safe, reason = check_injection(answer)
+
         if not is_safe:
-            log.warning(f"Injection attempt in answer[{i}] | user: {email} | reason: {reason}")
-            raise HTTPException(status_code=400, detail="Invalid content detected in your answers.")
+            log.warning(
+                f"Injection attempt in answer[{i}] | "
+                f"user: {email} | reason: {reason}"
+            )
 
-    log.info(f"Generating prompt for: {email} | input length: {len(clean_input)}")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid content detected in your answers."
+            )
 
-    qa_pairs      = "\n".join(f"Q: {q}\nA: {a}" for q, a in zip(body.questions, clean_answers))
-    file_context  = build_file_context(body.filenames)
-    context_block = f"\n\nFile context:\n{file_context}" if file_context else ""
-
-    # ── PASS 1: Generate structured draft ──────────────────────────────────
-    # Build a readable summary of what the user answered so nothing gets lost
-    answered_points = "\n".join(
-        f"- {a.strip()}" for a in clean_answers if a.strip()
+    log.info(
+        f"Generating prompt for: {email} | "
+        f"input length: {len(clean_input)}"
     )
+
+    # =========================================================
+    # 2. BUILD Q&A CONTEXT
+    # =========================================================
+
+    qa_pairs = "\n".join(
+        f"Q: {q}\nA: {a}"
+        for q, a in zip(body.questions, clean_answers)
+    )
+
+    file_context = build_file_context(body.filenames)
+
+    context_block = (
+        f"\n\nFile context:\n{file_context}"
+        if file_context
+        else ""
+    )
+
+    # =========================================================
+    # 3. BUILD ANSWERED POINTS
+    # =========================================================
+
+    answered_points = "\n".join(
+        f"- {a.strip()}"
+        for a in clean_answers
+        if a and a.strip()
+    )
+
+    # =========================================================
+    # 4. PASS 1 — GENERATE STRUCTURED DRAFT
+    # =========================================================
 
     draft_instruction = f"""You are a prompt engineer. Your job is to convert a user's task and their answers into a structured AI prompt.
 
-CRITICAL RULE: Every specific detail, point, and fact the user provided in their answers MUST appear in the final prompt. Do not drop, merge, or summarize away any information the user gave. Token optimization means removing filler words — never removing the user's content.
+CRITICAL RULE:
+Every specific detail, point, and fact the user provided in their answers MUST appear in the final prompt.
+
+Do not drop, merge, summarize away, or invent information.
+
+Token optimization means removing filler words — never removing the user's content.
 
 Use ONLY this format:
+
 Role: [who the AI should be — one short phrase]
 Task: [imperative verb + exact object — one sentence]
 Context: [ALL specific details from user answers — preserve every point]
@@ -242,12 +305,21 @@ Constraints: [format, length, tone, audience — from user answers]
 Output: [exact format expected]
 
 Rules:
-- Use imperative verbs (Write, Summarize, Analyze, Generate, Fix, Explain)
-- No filler: no "please", "make sure", "I want you to", "could you"
-- Context field must contain ALL key points the user mentioned — list them if needed
+- Use imperative verbs such as Write, Summarize, Analyze, Generate, Fix, Explain
+- No filler such as "please", "make sure", "I want you to", or "could you"
+- Context must contain ALL key points the user mentioned
+- List details separately when necessary
 - Do NOT omit any answer the user gave
+- Do NOT invent requirements that the user did not provide
+- Return ONLY the structured prompt
+- Do not include a preamble
+- Do not include markdown
+- The response MUST NOT be empty
 
-User task: {clean_input}{context_block}
+User task:
+{clean_input}
+
+{context_block}
 
 User's answers to clarifying questions:
 {qa_pairs}
@@ -255,34 +327,191 @@ User's answers to clarifying questions:
 Key points from user's answers (ALL must appear in the prompt):
 {answered_points}
 
-Return ONLY the structured prompt. No explanation, no preamble."""
+Return ONLY the structured prompt.
+"""
 
     try:
-        draft = await call_groq(draft_instruction, max_tokens=500, temperature=1.5)
-    except HTTPException as e:
-        log.error(f"Groq error during draft generation for {email}: {e.detail}")
+
+        draft = await call_groq(
+            draft_instruction,
+            max_tokens=500,
+            temperature=0.3
+        )
+
+        draft = (draft or "").strip()
+
+        # -----------------------------------------------------
+        # VERY IMPORTANT:
+        # Never continue with an empty draft.
+        # -----------------------------------------------------
+
+        log.info(
+            f"PASS 1 completed for {email} | "
+            f"draft_len={len(draft)} | "
+            f"preview={repr(draft[:300])}"
+        )
+
+        if not draft:
+            log.error(
+                f"PASS 1 returned EMPTY draft for {email}"
+            )
+
+            raise HTTPException(
+                status_code=500,
+                detail="The AI returned an empty prompt. Please try again."
+            )
+
+    except HTTPException:
         raise
 
-    log.info(f"Draft generated for {email} | draft_len: {len(draft)}")
+    except Exception as e:
 
-    # ── PASS 2: Compress the draft — preserve all content, remove only filler ──
+        log.error(
+            f"Groq error during draft generation for {email}: {e}"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate the prompt. Please try again."
+        )
+
+    # =========================================================
+    # 5. PASS 2 — COMPRESS THE DRAFT
+    # =========================================================
+
     try:
-        final_prompt = await compress_prompt(draft, answered_points)
-    except HTTPException as e:
-        log.warning(f"Compression failed for {email}, using draft: {e.detail}")
+
+        compressed_prompt = await compress_prompt(
+            draft,
+            answered_points
+        )
+
+        compressed_prompt = (
+            compressed_prompt or ""
+        ).strip()
+
+        log.info(
+            f"PASS 2 completed for {email} | "
+            f"compressed_len={len(compressed_prompt)} | "
+            f"preview={repr(compressed_prompt[:300])}"
+        )
+
+        # -----------------------------------------------------
+        # If compression returned nothing, use the original
+        # draft instead of returning an empty prompt.
+        # -----------------------------------------------------
+
+        if compressed_prompt:
+
+            final_prompt = compressed_prompt
+
+        else:
+
+            log.warning(
+                f"Compression returned empty output for {email}; "
+                f"falling back to draft."
+            )
+
+            final_prompt = draft
+
+    except Exception as e:
+
+        log.warning(
+            f"Compression failed for {email}: {e}; "
+            f"falling back to draft."
+        )
+
         final_prompt = draft
 
-    # ── Token count ────────────────────────────────────────────────────────
+    # =========================================================
+    # 6. FINAL PROMPT VALIDATION
+    # =========================================================
+
+    final_prompt = (final_prompt or "").strip()
+
+    log.info(
+        f"FINAL PROMPT for {email} | "
+        f"length={len(final_prompt)} | "
+        f"preview={repr(final_prompt[:500])}"
+    )
+
+    # ---------------------------------------------------------
+    # This should NEVER happen now.
+    # But keep this final safety check.
+    # ---------------------------------------------------------
+
+    if not final_prompt:
+
+        log.error(
+            f"FINAL PROMPT IS EMPTY for {email}"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate the final prompt. Please try again."
+        )
+
+    # =========================================================
+    # 7. TOKEN COUNT
+    # =========================================================
+
     token_count = estimate_tokens(final_prompt)
 
-    # ── PASS 3: Coverage check — verify all answers made it into the prompt ──
-    coverage = await check_coverage(body.questions, clean_answers, final_prompt)
-    covered_count = sum(1 for c in coverage if c["covered"])
-    log.info(f"Coverage check: {covered_count}/{len(coverage)} answers covered for {email}")
+    # =========================================================
+    # 8. COVERAGE CHECK
+    # =========================================================
 
-    log.info(f"Prompt ready for {email} | final_len: {len(final_prompt)} | est_tokens: {token_count}")
+    try:
+
+        coverage = await check_coverage(
+            body.questions,
+            clean_answers,
+            final_prompt
+        )
+
+    except Exception as e:
+
+        log.error(
+            f"Unexpected coverage error for {email}: {e}"
+        )
+
+        # Never claim that everything is covered if the check
+        # itself failed.
+        coverage = [
+            {
+                "question": q,
+                "answer": a,
+                "covered": False,
+                "reason": "Coverage check failed"
+            }
+            for q, a in zip(body.questions, clean_answers)
+            if a and a.strip()
+        ]
+
+    covered_count = sum(
+        1
+        for c in coverage
+        if c.get("covered") is True
+    )
+
+    log.info(
+        f"Coverage check: "
+        f"{covered_count}/{len(coverage)} answers covered "
+        f"for {email}"
+    )
+
+    # =========================================================
+    # 9. FINAL RESPONSE
+    # =========================================================
+
+    log.info(
+        f"Prompt ready for {email} | "
+        f"final_len={len(final_prompt)} | "
+        f"est_tokens={token_count}"
+    )
+
     return {
-        "prompt": final_prompt.strip(),
+        "prompt": final_prompt,
         "token_count": token_count,
         "coverage": coverage,
     }

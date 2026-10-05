@@ -43,6 +43,16 @@ async def compress_prompt(draft: str, answered_points: str = "") -> str:
     Removes filler words and redundant phrasing ONLY.
     Every piece of content the user provided must survive intact.
     """
+
+    draft = (draft or "").strip()
+
+    # Never send an empty draft to the compression model
+    if not draft:
+        raise HTTPException(
+            status_code=500,
+            detail="Cannot compress an empty draft."
+        )
+
     preservation_block = f"""
 CONTENT THAT MUST BE PRESERVED (do not remove or summarize any of these):
 {answered_points}
@@ -57,29 +67,92 @@ STRICT RULES:
 4. Keep the exact Role/Task/Context/Constraints/Output structure
 5. Context field must retain ALL specific details — shorten the words, not the content
 6. Return ONLY the compressed prompt. No explanation, no preamble, no markdown.
+7. The output MUST NOT be empty.
+8. If no compression is possible, return the original prompt unchanged.
+
 {preservation_block}
+
 DRAFT TO COMPRESS:
 {draft}"""
 
-    result = await call_groq(compression_instruction, max_tokens=400, temperature=0.1)
-    return result.strip()
+    result = await call_groq(
+        compression_instruction,
+        max_tokens=400,
+        temperature=0.1
+    )
+
+    result = (result or "").strip()
+
+    # If compression returned nothing, raise an error so the
+    # calling code can safely fall back to the original draft.
+    if not result:
+        raise HTTPException(
+            status_code=500,
+            detail="Compression returned an empty prompt."
+        )
+    return result
 
 
-async def check_coverage(questions: list, answers: list, final_prompt: str) -> list:
+async def check_coverage(
+    questions: list,
+    answers: list,
+    final_prompt: str
+) -> list:
     """
-    For each Q&A pair, check whether the answer's intent is reflected
-    in the final prompt — directly or indirectly.
-    Returns a list of dicts: {question, answer, covered: bool, reason: str}
+    Check whether each answered question is reflected in the final prompt.
+
+    IMPORTANT:
+    - An empty final prompt means nothing is covered.
+    - If the AI coverage check fails, default to FALSE, never TRUE.
+    - Only answered questions are checked.
     """
+
+    final_prompt = (final_prompt or "").strip()
+
+    # ---------------------------------------------------------
+    # SAFETY CHECK:
+    # An empty prompt cannot possibly contain the user's answers.
+    # ---------------------------------------------------------
+    answered_pairs = [
+        (q, a)
+        for q, a in zip(questions, answers)
+        if a and a.strip()
+    ]
+
+    if not answered_pairs:
+        return []
+
+    if not final_prompt:
+        log.warning("Coverage check received an empty final prompt.")
+
+        return [
+            {
+                "question": q,
+                "answer": a,
+                "covered": False,
+                "reason": "Final prompt is empty"
+            }
+            for q, a in answered_pairs
+        ]
+
+    # ---------------------------------------------------------
+    # Build Q&A block using NEW sequential indexes.
+    #
+    # This avoids the bug where unanswered questions create
+    # gaps such as indexes 2, 3 instead of 1, 2.
+    # ---------------------------------------------------------
     qa_block = "\n".join(
-        f"{i+1}. Q: {q}\n   A: {a}"
-        for i, (q, a) in enumerate(zip(questions, answers))
-        if a.strip()
+        f"{i}. Q: {q}\n   A: {a}"
+        for i, (q, a) in enumerate(answered_pairs, start=1)
     )
 
     check_instruction = f"""You are verifying whether a user's answers are reflected in an AI prompt.
 
-For each Q&A pair below, determine if the answer's meaning or intent is present in the final prompt — either directly (same words) or indirectly (same meaning expressed differently).
+For each Q&A pair below, determine whether the answer's meaning or intent is present in the final prompt.
+
+The answer can be covered:
+- directly using the same words
+- indirectly using different words with the same meaning
 
 Q&A PAIRS:
 {qa_block}
@@ -87,41 +160,128 @@ Q&A PAIRS:
 FINAL PROMPT:
 {final_prompt}
 
-For each numbered Q&A pair, respond with ONLY a JSON array in this exact format — nothing else:
+Return ONLY a valid JSON array in this exact structure:
+
 [
-  {{"index": 1, "covered": true, "reason": "one short phrase explaining how it's covered"}},
-  {{"index": 2, "covered": false, "reason": "one short phrase explaining what's missing"}}
+  {{"index": 1, "covered": true, "reason": "short explanation"}},
+  {{"index": 2, "covered": false, "reason": "short explanation"}}
 ]
 
-Rules:
-- covered: true if the answer's meaning appears anywhere in the prompt
-- covered: false only if the answer's intent is completely absent
-- reason: under 8 words
-- Return ONLY the JSON array. No explanation, no preamble."""
+STRICT RULES:
+- Return exactly one result for every Q&A pair.
+- covered=true ONLY if the answer's meaning is actually present.
+- covered=false if the answer's intent is missing.
+- Never assume an answer is covered.
+- reason must be under 8 words.
+- Return ONLY the JSON array.
+- Do not use markdown.
+- Do not include any explanation outside the JSON.
+"""
 
     try:
-        raw = await call_groq(check_instruction, max_tokens=300, temperature=0.0)
-        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        raw = await call_groq(
+            check_instruction,
+            max_tokens=300,
+            temperature=0.0
+        )
+
+        raw = (raw or "").strip()
+
+        if not raw:
+            raise ValueError(
+                "Coverage model returned an empty response."
+            )
+
+        # -----------------------------------------------------
+        # Remove optional markdown code fences.
+        # -----------------------------------------------------
+        if raw.startswith("```json"):
+            raw = raw[len("```json"):].strip()
+        elif raw.startswith("```"):
+            raw = raw[len("```"):].strip()
+
+        if raw.endswith("```"):
+            raw = raw[:-3].strip()
+
+        if not raw:
+            raise ValueError(
+                "Coverage response was empty after cleanup."
+            )
+
+        # -----------------------------------------------------
+        # Parse JSON.
+        # -----------------------------------------------------
         parsed = json.loads(raw)
 
+        if not isinstance(parsed, list):
+            raise ValueError(
+                "Coverage response is not a JSON array."
+            )
+
         results = []
-        for i, (q, a) in enumerate(zip(questions, answers)):
-            if not a.strip():
+
+        # -----------------------------------------------------
+        # Match results against our sequential indexes.
+        # -----------------------------------------------------
+        for i, (q, a) in enumerate(answered_pairs, start=1):
+
+            match = next(
+                (
+                    item
+                    for item in parsed
+                    if isinstance(item, dict)
+                    and item.get("index") == i
+                ),
+                None
+            )
+
+            # IMPORTANT:
+            # If the model failed to return a result for this
+            # answer, mark it FALSE instead of TRUE.
+            if match is None:
+                results.append({
+                    "question": q,
+                    "answer": a,
+                    "covered": False,
+                    "reason": "No coverage result returned"
+                })
                 continue
-            match = next((item for item in parsed if item.get("index") == i + 1), None)
+
+            covered = match.get("covered", False)
+
+            # Make sure we really have a boolean.
+            if not isinstance(covered, bool):
+                covered = False
+
+            reason = str(
+                match.get("reason", "")
+            ).strip()[:100]
+
             results.append({
                 "question": q,
                 "answer": a,
-                "covered": match.get("covered", True) if match else True,
-                "reason": match.get("reason", "") if match else "",
+                "covered": covered,
+                "reason": reason
             })
         return results
 
     except Exception as e:
-        log.warning(f"Coverage check failed: {e} — defaulting all to covered")
+        # -----------------------------------------------------
+        # IMPORTANT:
+        # NEVER default failed coverage checks to TRUE.
+        # -----------------------------------------------------
+        log.warning(
+            f"Coverage check failed: {e}"
+        )
+
         return [
-            {"question": q, "answer": a, "covered": True, "reason": "included"}
-            for q, a in zip(questions, answers) if a.strip()
+            {
+                "question": q,
+                "answer": a,
+                "covered": False,
+                "reason": "Coverage check failed"
+            }
+            for q, a in answered_pairs
         ]
 
 
